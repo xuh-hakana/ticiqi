@@ -1,0 +1,330 @@
+/* ===========================================================================
+   皮肤 B · 赛博炫光（CYBERCORE 视觉语言，ticiqi 独立项目自写 · 2026-11-06）
+   ---------------------------------------------------------------------------
+   这是干什么的：在「深霓虹」的近黑底 + 双霓虹之上，再叠 10 组特效，是三套里最炫的。
+   只换外观：不动任何 DOM、不动任何功能逻辑；开关是 html[data-skin="cybercore"]。
+   两套皮肤互斥（data-skin 只有一个值），所以本文件自带完整变量，不依赖另一份。
+
+   特效层一律 pointer-events:none，不吃鼠标点击；所有文字仍走 --ink / --muted，
+   正文 #F2FAFF / 底 #05030D ≈ 19.4:1，次要 #C4D6F2 / 底 ≈ 12.4:1。
+
+   参考：CYBERCORE CSS 的 6 类特效（扫描线 / glitch / 霓虹边 / 噪声 / 角标 / 网格）；
+   没有可直装插件，落地为本地样式表 + skin.js 里 3 行鼠标跟随。
+   =========================================================================== */
+
+html[data-skin="cybercore"]:root,
+html[data-skin="cybercore"] {
+  color-scheme: dark;
+
+  --paper:        #05030D;
+  --surface:      #0B0820;
+  --surface-2:    #070518;
+  --surface-3:    #1A1140;
+  --ink:          #F2FAFF;
+  --ink-soft:     #DDEBFF;
+  --muted:        #C4D6F2;
+  --faint:        #93A8D0;
+  --line:         #2B2160;
+  --line-strong:  #4B3AA0;
+
+  --accent:       #00E5FF;
+  --accent-dark:  #8BFAFF;
+  --accent-soft:  #0B3038;
+  --accent-faint: #061E24;
+
+  --cyan:         #00E5FF;
+  --cyan-soft:    #0B3038;
+  --green:        #4DFFB0;
+  --green-soft:   #0B2A20;
+  --amber:        #FFE94D;
+  --amber-soft:   #2A2410;
+  --red:          #FF5C8A;
+  --red-soft:     #311020;
+  --blue:         #8FA8FF;
+  --blue-soft:    #141C3A;
+
+  --code-bg:      #03020A;
+  --code-bg-2:    #080618;
+  --code-line:    #1B1340;
+  --code-ink:     #E6FAFF;
+  --code-muted:   #7484BC;
+
+  --glass:        rgba(11, 8, 32, .94);
+  --card:         #0B0820;
+  --text:         #F2FAFF;
+  --card-shadow:  0 0 0 1px rgba(0,229,255,.14), 0 20px 44px -30px #000;
+  --card-shadow-hi: 0 0 0 1px rgba(0,229,255,.5), 0 0 28px -6px rgba(0,229,255,.6);
+  --shadow-sm:    0 1px 0 rgba(0,0,0,.5);
+  --shadow-md:    0 18px 40px -22px #000;
+  --shadow-lg:    0 40px 90px -40px #000;
+
+  --tc-neon:      #FF2E88;
+  --tc-neon-soft: rgba(255, 46, 136, .2);
+
+  /* 鼠标位置，由 skin.js 写入；未写入时是屏幕中心，效果只是不跟着动 */
+  --gx: 50vw; --gy: 50vh;
+  --mx: 0deg; --my: 0deg;
+
+  /* 下面 4 个沿用原值：字体与尺寸不属于配色，改了会动排版（她要求位置固定） */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --topbar-h: 54px;
+  --status-h: 28px;
+}
+
+html[data-skin="cybercore"] .app-shell,
+html[data-skin="cybercore"] .main-pane,
+html[data-skin="cybercore"] .prompt-view { background: var(--surface-2); }
+html[data-skin="cybercore"] .prompt-head,
+html[data-skin="cybercore"] .tc-topbar,
+html[data-skin="cybercore"] .tc-dock,
+html[data-skin="cybercore"] .prompt-list-panel,
+html[data-skin="cybercore"] .prompt-detail,
+html[data-skin="cybercore"] .prompt-stats,
+html[data-skin="cybercore"] .tc-groups,
+html[data-skin="cybercore"] .tc-detail-slots {
+  background: var(--surface);
+  border-color: var(--line);
+}
+html[data-skin="cybercore"] .prompt-card,
+html[data-skin="cybercore"] .issue-card,
+html[data-skin="cybercore"] .modal,
+html[data-skin="cybercore"] .drawer,
+html[data-skin="cybercore"] .skin-panel,
+html[data-skin="cybercore"] .issue-panel {
+  border-radius: 3px 14px 3px 14px;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 0 0 1px rgba(0,229,255,.1), 0 0 24px -14px var(--accent), 0 14px 34px -24px #000;
+}
+html[data-skin="cybercore"] .prompt-card.is-active,
+html[data-skin="cybercore"] .skin-option.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 24px -6px var(--accent);
+}
+html[data-skin="cybercore"] .tc-btn,
+html[data-skin="cybercore"] .ghost-btn,
+html[data-skin="cybercore"] .primary-btn { border-radius: 3px 9px 3px 9px; }
+html[data-skin="cybercore"] .primary-btn {
+  background: linear-gradient(100deg, var(--accent-soft), rgba(255,46,136,.22));
+  border-color: var(--accent); color: var(--accent-dark);
+}
+
+/* ---------- 10 组额外特效 ---------- */
+/* 1 扫描线：整屏细横线从上往下扫，纯装饰、不吃点击 */
+@keyframes tcScanline { from { transform: translateY(-100%); } to { transform: translateY(100vh); } }
+/* 2 故障抖动：标题偶尔像信号不好一样错位 */
+@keyframes tcGlitch {
+  0%, 88%, 100% { transform: translate(0); text-shadow: 0 0 10px rgba(0,229,255,.4); }
+  90% { transform: translate(-2px, 1px); text-shadow: 2px 0 var(--tc-neon), -2px 0 var(--accent); }
+  92% { transform: translate(2px, -1px); text-shadow: -2px 0 var(--tc-neon), 2px 0 var(--accent); }
+  94% { transform: translate(-1px, 0); }
+}
+/* 3 噪点漂移 */
+@keyframes tcNoise {
+  0%   { background-position: 0 0; }
+  100% { background-position: 180px 180px; }
+}
+/* 4 背景网格流动 */
+@keyframes tcGridFlow {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 0 0, 40px 40px; }
+}
+/* 5 卡片跟鼠标轻斜（角度由 skin.js 写入 --mx / --my） */
+@keyframes tcTiltSettle { from { filter: brightness(1.18); } to { filter: brightness(1); } }
+/* 6 点击扩散光圈（skin.js 给被点元素挂 .tc-ripple） */
+@keyframes tcRipple {
+  from { transform: scale(0); opacity: .65; }
+  to   { transform: scale(2.6); opacity: 0; }
+}
+/* 7 数字闪 */
+@keyframes tcFlicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: 1; }
+  48% { opacity: .45; }
+  49% { opacity: 1; }
+  73% { opacity: .7; }
+  74% { opacity: 1; }
+}
+/* 8 四角 HUD 角标呼吸 */
+@keyframes tcCornerPulse {
+  0%, 100% { opacity: .45; }
+  50%      { opacity: 1; }
+}
+/* 9 鼠标光晕跟随（位置由 skin.js 写入 --gx / --gy） */
+@keyframes tcBootFlash {
+  0%   { opacity: 0; }
+  8%   { opacity: .85; }
+  16%  { opacity: .12; }
+  24%  { opacity: .6; }
+  100% { opacity: 0; }
+}
+/* 10 开机闪一下 */
+@keyframes tcBootIn {
+  0%   { opacity: 0; transform: translateY(12px) scale(.99); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 装饰层：固定在视口、pointer-events:none，绝不吃点击 */
+html[data-skin="cybercore"] .app-shell::before,
+html[data-skin="cybercore"] .app-shell::after {
+  content: ""; position: fixed; inset: 0; z-index: 90; pointer-events: none;
+}
+html[data-skin="cybercore"] .app-shell::before {
+  /* 网格 + 噪点 */
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,.055) 1px, transparent 0),
+    linear-gradient(rgba(0,229,255,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,.045) 1px, transparent 1px);
+  background-size: 6px 6px, 40px 40px, 40px 40px;
+  animation: tcNoise 6s steps(6) infinite, tcGridFlow 12s linear infinite;
+  opacity: .55;
+}
+html[data-skin="cybercore"] .app-shell::after {
+  /* 鼠标光晕 */
+  background: radial-gradient(340px circle at var(--gx) var(--gy), rgba(0,229,255,.10), rgba(255,46,136,.05) 45%, transparent 70%);
+  mix-blend-mode: screen;
+}
+
+/* 扫描线：单独一层，用 body 的伪元素（app-shell 两个伪元素已占满） */
+html[data-skin="cybercore"] body::after {
+  content: ""; position: fixed; left: 0; right: 0; top: 0; height: 46vh;
+  z-index: 91; pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(0,229,255,.045) 46%, rgba(255,255,255,.07) 50%, transparent);
+  animation: tcScanline 7s linear infinite;
+}
+/* 开机闪 */
+html[data-skin="cybercore"] body::before {
+  content: ""; position: fixed; inset: 0; z-index: 150; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0,229,255,.32), rgba(255,46,136,.16));
+  animation: tcBootFlash 1.1s ease-out 1 both;
+}
+html[data-skin="cybercore"] .prompt-view { animation: tcBootIn .5s ease-out both; }
+
+/* 标题故障 + 数字闪 + 角标 */
+html[data-skin="cybercore"] .prompt-head-copy h1,
+html[data-skin="cybercore"] .tc-brand strong {
+  color: var(--ink);
+  animation: tcGlitch 5.5s linear infinite;
+}
+html[data-skin="cybercore"] .prompt-stat strong,
+html[data-skin="cybercore"] .issue-badge,
+html[data-skin="cybercore"] .tc-dock-ver { animation: tcFlicker 3.4s linear infinite; }
+html[data-skin="cybercore"] .tc-topbar {
+  border-bottom: 1px solid var(--accent);
+  box-shadow: 0 1px 18px -5px var(--accent), inset 0 -1px 0 var(--tc-neon);
+  position: relative;
+}
+html[data-skin="cybercore"] .tc-topbar::before,
+html[data-skin="cybercore"] .tc-dock::before {
+  content: ""; position: absolute; left: 10px; top: 8px;
+  width: 16px; height: 16px; pointer-events: none;
+  border-left: 2px solid var(--accent); border-top: 2px solid var(--accent);
+  animation: tcCornerPulse 2.6s ease-in-out infinite;
+}
+html[data-skin="cybercore"] .tc-dock { position: relative; }
+html[data-skin="cybercore"] .tc-dock::before {
+  left: auto; right: 10px; top: auto; bottom: 8px;
+  border: 0; border-right: 2px solid var(--tc-neon); border-bottom: 2px solid var(--tc-neon);
+}
+
+/* 卡片跟鼠标轻斜：角度由 skin.js 写 --mx / --my，未启用时是 0 度（不变更布局） */
+html[data-skin="cybercore"] .prompt-card,
+html[data-skin="cybercore"] .issue-card,
+html[data-skin="cybercore"] .skin-option {
+  transform: perspective(700px) rotateX(var(--my)) rotateY(var(--mx));
+  transition: transform .16s ease-out, border-color .18s;
+}
+html[data-skin="cybercore"] .prompt-card:hover,
+html[data-skin="cybercore"] .issue-card:hover { animation: tcTiltSettle .3s ease-out; border-color: var(--accent); }
+
+/* 点击光圈：skin.js 动态插入 <i class="tc-ripple-dot"> */
+.tc-ripple-dot {
+  position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  border-radius: 50%; pointer-events: none; z-index: 3;
+  background: radial-gradient(circle, rgba(0,229,255,.8), rgba(255,46,136,.2) 60%, transparent 70%);
+  animation: tcRipple .55s ease-out 1 both;
+}
+
+/* ---------- 文字可读性 ---------- */
+html[data-skin="cybercore"] .eyebrow,
+html[data-skin="cybercore"] .tc-groups-label,
+html[data-skin="cybercore"] .tc-segments-head,
+html[data-skin="cybercore"] .tc-dock-label,
+html[data-skin="cybercore"] .prompt-head-copy p,
+html[data-skin="cybercore"] .prompt-stat,
+html[data-skin="cybercore"] .tc-slot-tag,
+html[data-skin="cybercore"] .tc-dock-slot,
+html[data-skin="cybercore"] .tc-seg,
+html[data-skin="cybercore"] .tc-subtab { color: var(--muted); }
+html[data-skin="cybercore"] .tc-dock-ver,
+html[data-skin="cybercore"] .tc-seg-note,
+html[data-skin="cybercore"] .skin-panel-note,
+html[data-skin="cybercore"] .skin-panel-foot { color: var(--faint); }
+html[data-skin="cybercore"] .issue-overlay,
+html[data-skin="cybercore"] .skin-overlay { background: rgba(3, 2, 10, .76); }
+html[data-skin="cybercore"] .tc-toast {
+  background: var(--accent-soft); color: var(--accent-dark);
+  border: 1px solid var(--accent); box-shadow: 0 0 18px -6px var(--accent);
+}
+html[data-skin="cybercore"] .code-wrap,
+html[data-skin="cybercore"] .code-scroll {
+  background-image:
+    linear-gradient(rgba(0,229,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: tcGridFlow 10s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-skin="cybercore"] *,
+  html[data-skin="cybercore"] *::before,
+  html[data-skin="cybercore"] *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; }
+  html[data-skin="cybercore"] .app-shell::before,
+  html[data-skin="cybercore"] body::after { display: none; }
+}
+
+/* ---------- 深色表单控件（修真截图抓到的白底 bug） ----------
+   theme.css 把 .search-box / .text-input 硬编码成 #fff，只有 [data-theme=night] 做了覆盖；
+   皮肤走的是 data-skin，不会命中那条覆盖，导致浅色字压在白底上看不见。
+   这里在皮肤作用域内补齐，选择器带 html[data-skin] 保证优先级高于 theme.css。 */
+html[data-skin="cybercore"] .search-box,
+html[data-skin="cybercore"] .search-box:focus-within,
+html[data-skin="cybercore"] .text-input,
+html[data-skin="cybercore"] .note-input,
+html[data-skin="cybercore"] .prompt-textarea,
+html[data-skin="cybercore"] textarea,
+html[data-skin="cybercore"] select,
+html[data-skin="cybercore"] input[type="text"],
+html[data-skin="cybercore"] input[type="search"] {
+  background: var(--surface-2) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+html[data-skin="cybercore"] .search-box input,
+html[data-skin="cybercore"] input::placeholder,
+html[data-skin="cybercore"] textarea::placeholder { color: var(--muted) !important; opacity: 1; }
+html[data-skin="cybercore"] .ghost-btn:hover,
+html[data-skin="cybercore"] .small-btn:hover,
+html[data-skin="cybercore"] .icon-btn:hover,
+html[data-skin="cybercore"] .root-chip:hover,
+html[data-skin="cybercore"] .api-chip:hover { background: var(--surface-3) !important; color: var(--ink) !important; }
+html[data-skin="cybercore"] .small-btn.is-strong {
+  background: var(--green-soft) !important; border-color: var(--green) !important; color: var(--green) !important;
+}
+html[data-skin="cybercore"] .main-pane,
+html[data-skin="cybercore"] .file-view,
+html[data-skin="cybercore"] .file-toolbar,
+html[data-skin="cybercore"] .file-subbar,
+html[data-skin="cybercore"] .statusbar { background: var(--surface) !important; }
+
+/* ---------- 预留位提亮（真截图里 .52 太暗，看不清「位置已预留」） ---------- */
+html[data-skin="cybercore"] .tc-view-btn:disabled,
+html[data-skin="cybercore"] .tc-group-btn:disabled { opacity: .82; }
+html[data-skin="cybercore"] .tc-slot-tag,
+html[data-skin="cybercore"] .tc-dock-slot,
+html[data-skin="cybercore"] .tc-seg,
+html[data-skin="cybercore"] .tc-subtab,
+html[data-skin="cybercore"] .tc-light { color: var(--muted) !important; }
+html[data-skin="cybercore"] .tc-seg,
+html[data-skin="cybercore"] .tc-dock-slot { border-color: var(--line-strong); }

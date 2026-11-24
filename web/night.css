@@ -1,0 +1,694 @@
+/* ===========================================================================
+   命令方块 · 夜晚模式（NIGHT SHIFT）
+   ---------------------------------------------------------------------------
+   这不是「把白天调暗」：白天是浅灰底 + 悬浮圆角卡；夜晚整块屏幕是一台街机
+   终端 —— 面板取消圆角与阴影、彼此只用 1px 霓虹线分隔，顶栏是一条 HUD 电
+   源条，强调色换成电光紫 + 青绿，代码区压到近黑并加一层网格。
+   只改视觉：不动任何 DOM、不动任何功能逻辑；开关由 html[data-theme] 控制。
+   =========================================================================== */
+
+/* ---------------- 雨夜可调参数（单一数据源） ----------------
+   这是干什么的：雨夜玻璃的所有面板数值都从这里取，改这一个地方，全站玻璃跟着变。
+   她的调参面板（顶栏「雨」按钮）写的就是这三个变量 + 三个 JS 参数，不再散落各处。
+   --rain-blur   面板磨砂半径基准（px）。越小雨滴越清晰，0 = 完全透。
+   --rain-alpha  面板底色不透明度基准（0~1）。越小越透，越大越实黑。
+   --rain-lum    窗外画布亮度（0~1）。越小窗外越暗。
+   各面板在下面用「基准 × 倍率」派生，默认值下与原值观感一致。
+   ------------------------------------------------------------ */
+:root {
+  --rain-blur: 8px;
+  --rain-alpha: .26;
+  --rain-lum: .5;
+}
+
+html[data-theme="night"] {
+  color-scheme: dark;
+
+  --paper:        #07060E;
+  --surface:      #100D20;
+  --surface-2:    #0C0A18;
+  --surface-3:    #1C1736;
+  --ink:          #EDE9FF;
+  --ink-soft:     #C6BEE8;
+  --muted:        #948BBE;
+  --faint:        #6A6198;
+  --line:         #271F45;
+  --line-strong:  #3A2F63;
+
+  --accent:       #B072FF;
+  --accent-dark:  #D6B4FF;
+  --accent-soft:  #241A3F;
+  --accent-faint: #180F2C;
+
+  --cyan:         #35E6CB;
+  --cyan-soft:    #0C2E2B;
+  --green:        #55E39B;
+  --green-soft:   #0D2A21;
+  --amber:        #FFC24D;
+  --amber-soft:   #2C2312;
+  --red:          #FF6B86;
+  --red-soft:     #33141F;
+  --blue:         #7FA6FF;
+  --blue-soft:    #131C36;
+
+  --code-bg:      #05040B;
+  --code-bg-2:    #0A0817;
+  --code-line:    #191333;
+  --code-ink:     #DED8FA;
+  --code-muted:   #575081;
+
+  --glass:        rgba(16, 13, 32, .92);
+  --card-shadow:  0 0 0 1px rgba(140, 105, 255, .10), 0 20px 44px -30px #000;
+  --card-shadow-hi: 0 0 0 1px rgba(176, 114, 255, .34), 0 0 24px -10px rgba(176, 114, 255, .55);
+  --shadow-sm:    0 1px 0 rgba(0, 0, 0, .4);
+  --shadow-md:    0 18px 40px -22px #000;
+  --shadow-lg:    0 40px 90px -40px #000;
+
+  --topbar-h: 48px;
+  --status-h: 26px;
+
+  --pie-1: #FF4FA3;
+  --pie-2: #35E6CB;
+  --pie-3: #7F9BFF;
+  --pie-4: #FFC24D;
+  --pie-5: #B072FF;
+  --pie-6: #55E39B;
+  --pie-rest: #4A4278;
+}
+
+/* ---------------- 底子：深空 + 极细网格 + 四角压暗 ---------------- */
+html[data-theme="night"] body {
+  background:
+    radial-gradient(1100px 620px at 50% -12%, rgba(176, 114, 255, .13), transparent 62%),
+    radial-gradient(900px 520px at 92% 108%, rgba(53, 230, 203, .08), transparent 60%),
+    linear-gradient(#07060E, #05040B);
+  color: var(--ink);
+}
+html[data-theme="night"] body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    linear-gradient(to right, rgba(140, 105, 255, .055) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(to bottom, rgba(140, 105, 255, .055) 1px, transparent 1px) 0 0 / 44px 44px;
+  mask-image: radial-gradient(circle at 50% 30%, rgba(0, 0, 0, .9), transparent 78%);
+}
+html[data-theme="night"] .app-shell { position: relative; z-index: 1; }
+html[data-theme="night"] ::selection { background: rgba(176, 114, 255, .34); color: #fff; }
+html[data-theme="night"] button:focus-visible,
+html[data-theme="night"] input:focus-visible,
+html[data-theme="night"] summary:focus-visible,
+html[data-theme="night"] [tabindex]:focus-visible { outline: 2px solid rgba(53, 230, 203, .7); outline-offset: 2px; }
+html[data-theme="night"] kbd {
+  background: #14102A; border-color: var(--line-strong); color: var(--muted);
+}
+
+/* ---------------- 骨架：一块整屏的控制台，不再是一叠浮卡 ---------------- */
+html[data-theme="night"] .app-shell { padding: 0; gap: 0; background: transparent; }
+html[data-theme="night"] .topbar {
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  /* 顶栏也做成薄玻璃：透一点雨和背景，不当实心黑条 */
+  background: linear-gradient(180deg,
+    rgba(18, 15, 38, clamp(0, calc(var(--rain-alpha) + .54), 1)) 0%,
+    rgba(10, 8, 23, clamp(0, calc(var(--rain-alpha) + .44), 1)) 100%);
+  box-shadow: none;
+  -webkit-backdrop-filter: blur(calc(var(--rain-blur) * 1.125)) saturate(1.18);
+  backdrop-filter: blur(calc(var(--rain-blur) * 1.125)) saturate(1.18);
+}
+html[data-theme="night"] .topbar::after {
+  left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent), var(--cyan) 46%, transparent 82%);
+  opacity: .9;
+}
+html[data-theme="night"] .layout { gap: 0; background: transparent; }
+html[data-theme="night"] .sidebar,
+html[data-theme="night"] .explorer,
+html[data-theme="night"] .main-pane {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-theme="night"] .sidebar {
+  border-right: 1px solid var(--line);
+  background: rgba(14, 11, 28, var(--rain-alpha));
+  -webkit-backdrop-filter: blur(var(--rain-blur)) saturate(1.2);
+  backdrop-filter: blur(var(--rain-blur)) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), inset -1px 0 0 rgba(176, 114, 255, .10);
+}
+html[data-theme="night"] .explorer {
+  border-right: 1px solid var(--line);
+  background: rgba(10, 8, 22, clamp(0, calc(var(--rain-alpha) - .02), 1));
+  -webkit-backdrop-filter: blur(calc(var(--rain-blur) * .875)) saturate(1.16);
+  backdrop-filter: blur(calc(var(--rain-blur) * .875)) saturate(1.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), inset -1px 0 0 rgba(53, 230, 203, .08);
+}
+html[data-theme="night"] .main-pane {
+  /* 读文件区容器：中性深底 + 轻磨砂，让背后「窗外雨」透出轮廓（隔着薄玻璃看）。
+     半径由 --rain-blur 派生，调大了雨就糊成一团均匀色 —— 这事交给她的调参面板。 */
+  background: rgba(6, 5, 14, clamp(0, calc(var(--rain-alpha) - .02), 1));
+  -webkit-backdrop-filter: blur(calc(var(--rain-blur) * .875)) saturate(1.2);
+  backdrop-filter: blur(calc(var(--rain-blur) * .875)) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+html[data-theme="night"] .sidebar::after,
+html[data-theme="night"] .explorer::after,
+html[data-theme="night"] .main-pane::after { display: none; }
+
+/* ---------------- 顶栏：HUD 电源条 ---------------- */
+html[data-theme="night"] .brand-mark {
+  border-radius: 4px;
+  background: linear-gradient(150deg, #2A1B52, #150E2C);
+  box-shadow: inset 0 0 0 1px rgba(176, 114, 255, .55), 0 0 18px -6px rgba(176, 114, 255, .8);
+}
+html[data-theme="night"] .brand-cube {
+  background: var(--cyan);
+  box-shadow: 4px 4px 0 rgba(53, 230, 203, .34), 8px 8px 0 rgba(53, 230, 203, .12);
+}
+html[data-theme="night"] .brand-text strong { letter-spacing: .06em; }
+html[data-theme="night"] .brand-text small { color: var(--cyan); letter-spacing: .22em; }
+
+html[data-theme="night"] .root-chip,
+html[data-theme="night"] .api-chip,
+html[data-theme="night"] .release-btn,
+html[data-theme="night"] .theme-btn {
+  background: rgba(28, 23, 54, .6);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--ink-soft);
+}
+html[data-theme="night"] .root-chip:hover,
+html[data-theme="night"] .api-chip:hover,
+html[data-theme="night"] .release-btn:hover,
+html[data-theme="night"] .theme-btn:hover {
+  border-color: rgba(176, 114, 255, .6);
+  background: rgba(40, 30, 78, .78);
+  box-shadow: 0 0 18px -8px rgba(176, 114, 255, .9);
+  transform: none;
+}
+html[data-theme="night"] .root-chip > .icon:first-child,
+html[data-theme="night"] .release-btn .icon,
+html[data-theme="night"] .theme-btn .icon { color: var(--cyan); }
+html[data-theme="night"] .version-pill {
+  background: rgba(53, 230, 203, .12);
+  color: var(--cyan);
+  border-color: rgba(53, 230, 203, .34);
+}
+
+/* 页签：不用胶囊，改成带霓虹下划线的 HUD 项目 */
+html[data-theme="night"] .top-tabs { background: transparent; border: 0; padding: 0; gap: 0; border-radius: 0; }
+html[data-theme="night"] .top-tab {
+  position: relative;
+  border-radius: 0;
+  padding: 6px 13px;
+  color: var(--muted);
+  letter-spacing: .06em;
+  font-size: 12px;
+}
+html[data-theme="night"] .top-tab:hover { color: var(--ink); background: rgba(176, 114, 255, .08); }
+html[data-theme="night"] .top-tab.is-active {
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+}
+html[data-theme="night"] .top-tab.is-active .icon { color: var(--cyan); }
+html[data-theme="night"] .top-tab.is-active::after {
+  content: "";
+  position: absolute; left: 10px; right: 10px; bottom: -13px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  box-shadow: 0 0 12px -2px var(--accent);
+}
+
+html[data-theme="night"] .status-dot.is-ok { background: var(--cyan); box-shadow: 0 0 0 3px rgba(53, 230, 203, .14), 0 0 10px rgba(53, 230, 203, .8); }
+html[data-theme="night"] .status-dot.is-warn { background: var(--amber); box-shadow: 0 0 0 3px rgba(255, 194, 77, .14); }
+html[data-theme="night"] .status-dot.is-bad { background: var(--red); box-shadow: 0 0 0 3px rgba(255, 107, 134, .16); }
+html[data-theme="night"] .status-dot.is-unchecked { background: var(--faint); box-shadow: 0 0 0 3px rgba(106, 97, 152, .18); }
+
+/* ---------------- 左栏：扇形图 + 收藏 ---------------- */
+html[data-theme="night"] .sidebar-heading,
+html[data-theme="night"] .explorer-head { border-bottom: 1px solid rgba(39, 31, 69, .7); }
+html[data-theme="night"] .sidebar-heading h2,
+html[data-theme="night"] .explorer-head h2 { color: var(--ink); letter-spacing: .03em; }
+html[data-theme="night"] .eyebrow { color: var(--cyan); letter-spacing: .2em; }
+
+html[data-theme="night"] .pie-panel {
+  margin: 10px 10px 0;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(45, 34, 84, .5), rgba(16, 13, 32, .82));
+  box-shadow: inset 0 0 0 1px rgba(176, 114, 255, .06);
+}
+html[data-theme="night"] .pie-panel::before {
+  content: "";
+  position: absolute; left: -1px; top: 12px; bottom: 12px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--accent), transparent);
+  opacity: .8;
+}
+html[data-theme="night"] .pie-panel.is-drop {
+  border-color: rgba(53, 230, 203, .7);
+  box-shadow: 0 0 22px -8px rgba(53, 230, 203, .8), inset 0 0 0 1px rgba(53, 230, 203, .3);
+}
+html[data-theme="night"] .pie-flag { background: rgba(53, 230, 203, .14); color: var(--cyan); border: 1px solid rgba(53, 230, 203, .3); }
+html[data-theme="night"] .pie-mode { color: var(--muted); }
+html[data-theme="night"] .pie-modes { background: rgba(10, 8, 23, .7); border-color: var(--line); border-radius: 3px; }
+html[data-theme="night"] .pie-mode.is-active {
+  background: rgba(176, 114, 255, .2);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(176, 114, 255, .55);
+}
+html[data-theme="night"] .pie-level { color: var(--muted); }
+html[data-theme="night"] .pie-level.is-active {
+  background: rgba(53, 230, 203, .18);
+  border-color: rgba(53, 230, 203, .55);
+  color: #E8FFFA;
+}
+html[data-theme="night"] .pie-center strong { color: #fff; text-shadow: 0 0 18px rgba(176, 114, 255, .5); }
+html[data-theme="night"] .pie-center-sub { color: var(--cyan); opacity: .8; }
+html[data-theme="night"] .pie-slice.is-current > .pie-arc { stroke: #fff; stroke-width: 1.4; }
+html[data-theme="night"] .pie-changed-mark { fill: var(--cyan); stroke: #0A0817; }
+html[data-theme="night"] .pie-ring-empty { stroke: #1B1533; }
+html[data-theme="night"] .pie-crumb { color: var(--muted); }
+html[data-theme="night"] .pie-crumb:hover { background: rgba(176, 114, 255, .16); color: #fff; }
+html[data-theme="night"] .pie-crumb.is-current { color: var(--cyan); }
+html[data-theme="night"] .pie-legend-row { color: var(--ink-soft); }
+html[data-theme="night"] .pie-legend-row:hover,
+html[data-theme="night"] .pie-legend-row.is-hover { background: rgba(176, 114, 255, .14); }
+html[data-theme="night"] .pie-legend-size { color: var(--faint); }
+html[data-theme="night"] .pie-hint { border-top-color: var(--line); color: var(--faint); }
+
+html[data-theme="night"] .fav-head:hover { background: rgba(176, 114, 255, .10); }
+html[data-theme="night"] .fav-category { border-radius: 3px; }
+html[data-theme="night"] .fav-category.is-dragover {
+  background: rgba(53, 230, 203, .08);
+  border-color: rgba(53, 230, 203, .5);
+}
+html[data-theme="night"] .fav-item { border-radius: 3px; }
+html[data-theme="night"] .fav-item:hover { background: rgba(176, 114, 255, .12); border-color: transparent; color: #fff; }
+html[data-theme="night"] .fav-item.is-selected {
+  background: rgba(176, 114, 255, .2);
+  border-color: rgba(176, 114, 255, .5);
+  color: #fff;
+}
+html[data-theme="night"] .fav-item-remove:hover { background: rgba(255, 107, 134, .2); color: var(--red); }
+html[data-theme="night"] .fav-empty-slot,
+html[data-theme="night"] .fav-new-category,
+html[data-theme="night"] .fav-inline-empty { border-color: var(--line-strong); color: var(--muted); background: rgba(16, 13, 32, .5); }
+html[data-theme="night"] .fav-new-category:hover { border-color: var(--accent); color: var(--accent-dark); background: rgba(176, 114, 255, .12); }
+html[data-theme="night"] .fav-category-input { background: #08060F; border-color: var(--accent); color: var(--ink); box-shadow: 0 0 0 3px rgba(176, 114, 255, .18); }
+html[data-theme="night"] .fav-drop-line { background: var(--cyan); box-shadow: 0 0 0 2px rgba(53, 230, 203, .25); }
+html[data-theme="night"] .sidebar-note {
+  background: linear-gradient(150deg, rgba(53, 230, 203, .10), transparent);
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+}
+html[data-theme="night"] .sidebar-note .icon { color: var(--cyan); }
+
+/* ---------------- 中栏：文件树 ---------------- */
+html[data-theme="night"] .search-box {
+  background: rgba(8, 6, 18, .86);
+  border-color: var(--line);
+  border-radius: 3px;
+  box-shadow: none;
+}
+html[data-theme="night"] .search-box:focus-within {
+  background: #08060F;
+  border-color: rgba(53, 230, 203, .55);
+  box-shadow: 0 0 0 2px rgba(53, 230, 203, .14);
+}
+html[data-theme="night"] .search-box input::placeholder { color: var(--faint); }
+html[data-theme="night"] .filter-chip { border-radius: 3px; color: var(--muted); }
+html[data-theme="night"] .filter-chip:hover { background: rgba(176, 114, 255, .14); color: #fff; }
+html[data-theme="night"] .filter-chip.is-active {
+  background: rgba(176, 114, 255, .2);
+  border-color: rgba(176, 114, 255, .55);
+  color: #fff;
+}
+html[data-theme="night"] .scope-bar { background: rgba(127, 166, 255, .12); color: var(--blue); border-radius: 3px; }
+html[data-theme="night"] .tree-group-head { color: var(--faint); }
+html[data-theme="night"] .tree-group-head .line { background: var(--line); }
+html[data-theme="night"] .tree-row { border-radius: 3px; color: var(--ink-soft); }
+html[data-theme="night"] .tree-row:hover { background: rgba(176, 114, 255, .12); color: #fff; }
+html[data-theme="night"] .tree-row.is-selected {
+  background: rgba(176, 114, 255, .22);
+  border-color: rgba(176, 114, 255, .5);
+  color: #fff;
+  box-shadow: inset 2px 0 0 var(--cyan);
+}
+html[data-theme="night"] .tree-row.is-dir .tree-name { color: var(--ink); }
+html[data-theme="night"] .tree-row.is-dir .tree-icon { color: var(--accent); }
+html[data-theme="night"] .tree-badge {
+  background: rgba(53, 230, 203, .16);
+  border-color: rgba(53, 230, 203, .4);
+  color: var(--cyan);
+}
+html[data-theme="night"] .new-dot { background: var(--cyan); box-shadow: 0 0 0 2px rgba(53, 230, 203, .18); }
+html[data-theme="night"] .new-banner { background: rgba(53, 230, 203, .1); border-color: rgba(53, 230, 203, .3); color: var(--cyan); }
+html[data-theme="night"] .new-jump { color: var(--cyan); }
+html[data-theme="night"] .new-jump.is-active { background: rgba(53, 230, 203, .2); border-color: rgba(53, 230, 203, .5); color: #E8FFFA; }
+
+/* ---------------- 右栏：文件 / 索引 / 底部状态条 ---------------- */
+html[data-theme="night"] .file-toolbar,
+html[data-theme="night"] .file-subbar,
+html[data-theme="night"] .file-view,
+html[data-theme="night"] .file-loading { background: transparent; border-color: var(--line); }
+html[data-theme="night"] .file-toolbar { border-bottom: 1px solid var(--line); }
+html[data-theme="night"] .file-fullpath { color: var(--faint); }
+html[data-theme="night"] .crumb { color: var(--muted); }
+html[data-theme="night"] .crumb:hover { color: var(--cyan); background: rgba(53, 230, 203, .1); }
+html[data-theme="night"] .crumb.is-current { color: var(--ink); }
+html[data-theme="night"] .lang-pill {
+  background: #05040B;
+  color: var(--cyan);
+  border: 1px solid rgba(53, 230, 203, .35);
+  box-shadow: 0 0 14px -6px rgba(53, 230, 203, .8);
+}
+html[data-theme="night"] .readonly-pill { background: rgba(53, 230, 203, .12); color: var(--cyan); }
+html[data-theme="night"] .note-strip {
+  background: linear-gradient(120deg, rgba(28, 23, 54, .7), rgba(12, 10, 24, .7));
+  border-color: var(--line);
+  border-radius: 4px;
+}
+html[data-theme="night"] .note-badge { background: rgba(176, 114, 255, .2); color: var(--accent-dark); }
+html[data-theme="night"] .note-text.is-auto { color: var(--muted); }
+html[data-theme="night"] .file-notice { background: rgba(255, 194, 77, .1); color: var(--amber); border: 1px solid rgba(255, 194, 77, .28); }
+
+html[data-theme="night"] .code-wrap {
+  border: 1px solid #201A3C;
+  border-radius: 4px;
+  box-shadow: 0 0 32px -22px rgba(176, 114, 255, .9);
+}
+html[data-theme="night"] .code-scroll {
+  /* 代码区也是一块薄玻璃：底色跟着 --rain-alpha 走，背后雨珠透一点轮廓；
+     半径略大于基准，保证等宽字仍然清晰可读。 */
+  -webkit-backdrop-filter: blur(calc(var(--rain-blur) * 1.125)) saturate(1.06);
+  backdrop-filter: blur(calc(var(--rain-blur) * 1.125)) saturate(1.06);
+  background:
+    linear-gradient(180deg, rgba(176, 114, 255, .05), transparent 140px),
+    linear-gradient(to right, rgba(140, 105, 255, .04) 1px, transparent 1px) 0 0 / 26px 26px,
+    rgba(5, 4, 11, clamp(0, calc(var(--rain-alpha) - .06), 1));
+}
+html[data-theme="night"] .code-line:hover { background: rgba(176, 114, 255, .1); }
+html[data-theme="night"] .code-line.is-active { background: rgba(176, 114, 255, .18); box-shadow: inset 2px 0 0 var(--accent); }
+html[data-theme="night"] .line-no { color: var(--code-muted); border-right-color: rgba(120, 90, 220, .16); }
+html[data-theme="night"] .code-line.is-active .line-no { color: var(--cyan); }
+
+html[data-theme="night"] .index-stat,
+html[data-theme="night"] .symbol-row,
+html[data-theme="night"] .folder-row,
+html[data-theme="night"] .recent-row { border-color: var(--line); }
+html[data-theme="night"] .symbol-row:hover,
+html[data-theme="night"] .folder-row:hover,
+html[data-theme="night"] .recent-row:hover { background: rgba(176, 114, 255, .12); }
+html[data-theme="night"] .folder-row { border-bottom: 1px solid var(--line); }
+
+html[data-theme="night"] .statusbar {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: linear-gradient(180deg,
+    rgba(7, 6, 17, clamp(0, calc(var(--rain-alpha) + .30), .92)),
+    rgba(5, 4, 12, clamp(0, calc(var(--rain-alpha) + .34), .95)));
+  box-shadow: none;
+  color: var(--muted);
+  -webkit-backdrop-filter: blur(calc(var(--rain-blur) * 1.125)) saturate(1.08);
+  backdrop-filter: blur(calc(var(--rain-blur) * 1.125)) saturate(1.08);
+}
+html[data-theme="night"] .status-sep { background: var(--line); }
+html[data-theme="night"] .status-api:hover,
+html[data-theme="night"] .status-new:hover { color: var(--cyan); }
+
+/* ---------------- 按钮 / 弹层 ---------------- */
+html[data-theme="night"] .primary-btn {
+  background: linear-gradient(160deg, #9B59FF, #6D2FE0);
+  color: #fff;
+  border-radius: 3px;
+  box-shadow: 0 0 22px -10px rgba(155, 89, 255, .95), inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+html[data-theme="night"] .primary-btn:hover { background: linear-gradient(160deg, #AC74FF, #7C3BEF); box-shadow: 0 0 26px -8px rgba(155, 89, 255, 1); }
+html[data-theme="night"] .ghost-btn,
+html[data-theme="night"] .subtle-btn,
+html[data-theme="night"] .small-btn,
+html[data-theme="night"] .danger-btn { border-radius: 3px; }
+html[data-theme="night"] .ghost-btn { background: rgba(28, 23, 54, .6); border-color: var(--line-strong); color: var(--ink-soft); }
+html[data-theme="night"] .ghost-btn:hover { background: rgba(176, 114, 255, .16); border-color: rgba(176, 114, 255, .5); color: #fff; }
+html[data-theme="night"] .subtle-btn:hover { background: rgba(53, 230, 203, .1); color: var(--cyan); border-color: rgba(53, 230, 203, .3); }
+html[data-theme="night"] .subtle-btn.is-starred { background: rgba(255, 194, 77, .14); color: var(--amber); border-color: rgba(255, 194, 77, .34); }
+html[data-theme="night"] .small-btn { background: rgba(28, 23, 54, .7); border-color: var(--line-strong); color: var(--ink-soft); }
+html[data-theme="night"] .small-btn:hover { background: rgba(176, 114, 255, .16); border-color: rgba(176, 114, 255, .5); color: #fff; }
+html[data-theme="night"] .text-btn { color: var(--cyan); }
+html[data-theme="night"] .danger-btn { background: rgba(255, 107, 134, .16); color: var(--red); border: 1px solid rgba(255, 107, 134, .36); }
+
+html[data-theme="night"] .modal-layer { background: rgba(3, 2, 8, .72); }
+html[data-theme="night"] .modal,
+html[data-theme="night"] .drawer,
+html[data-theme="night"] .sheet,
+html[data-theme="night"] .release-panel,
+html[data-theme="night"] .prompt-panel,
+html[data-theme="night"] .modal-card {
+  background: #120F24;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 40px 90px -40px #000, 0 0 0 1px rgba(176, 114, 255, .12) !important;
+}
+html[data-theme="night"] .text-input,
+html[data-theme="night"] .note-input,
+html[data-theme="night"] .prompt-text,
+html[data-theme="night"] .prompt-small,
+html[data-theme="night"] .prompt-title-input {
+  background: #08060F; border: 1px solid var(--line); border-radius: 3px; color: var(--ink);
+}
+html[data-theme="night"] .text-input:focus,
+html[data-theme="night"] .note-input:focus { border-color: rgba(53, 230, 203, .6); box-shadow: 0 0 0 2px rgba(53, 230, 203, .14); }
+html[data-theme="night"] .safety-note { background: rgba(53, 230, 203, .08); border-color: rgba(53, 230, 203, .24); color: var(--muted); }
+html[data-theme="night"] code { background: rgba(176, 114, 255, .14); color: var(--accent-dark); }
+html[data-theme="night"] .requirement-pre { background: #08060F; border-color: var(--line); color: var(--ink-soft); }
+html[data-theme="night"] .toast {
+  background: #14102A;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--ink);
+  box-shadow: 0 0 24px -14px rgba(176, 114, 255, .9);
+}
+html[data-theme="night"] .toast.is-error { border-color: rgba(255, 107, 134, .5); color: var(--red); }
+html[data-theme="night"] .toast.is-warn { border-color: rgba(255, 194, 77, .45); color: var(--amber); }
+
+/* ---------------- 欢迎页 ---------------- */
+html[data-theme="night"] .welcome::before {
+  background-image: radial-gradient(rgba(140, 105, 255, .22) .7px, transparent .7px);
+  background-size: 20px 20px;
+}
+html[data-theme="night"] .welcome-badge {
+  background: rgba(53, 230, 203, .1);
+  border: 1px solid rgba(53, 230, 203, .28);
+  color: var(--cyan);
+  border-radius: 3px;
+}
+html[data-theme="night"] .welcome-copy h1 { color: var(--ink); }
+html[data-theme="night"] .welcome-copy h1 em { color: var(--accent); text-shadow: 0 0 30px rgba(176, 114, 255, .55); }
+html[data-theme="night"] .welcome-copy h1 em::after { background: rgba(176, 114, 255, .3); }
+html[data-theme="night"] .welcome-board .board-window {
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 0 40px -18px rgba(176, 114, 255, .6);
+}
+html[data-theme="night"] .board-bar { background: #0E0B1E; border-bottom-color: var(--line); }
+html[data-theme="night"] .board-line.active { background: rgba(176, 114, 255, .7); }
+html[data-theme="night"] .board-card { background: rgba(20, 16, 42, .92); border-color: var(--line-strong); }
+html[data-theme="night"] .board-cube span { background: var(--accent); box-shadow: 12px 12px 0 rgba(176, 114, 255, .18); }
+html[data-theme="night"] .welcome-features { border-top-color: var(--line); }
+html[data-theme="night"] .welcome-features article {
+  background: rgba(16, 13, 32, .7);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+html[data-theme="night"] .welcome-features article:hover { border-color: rgba(176, 114, 255, .45); box-shadow: 0 0 26px -18px rgba(176, 114, 255, .9); }
+html[data-theme="night"] .welcome-features .feature-no { color: var(--cyan); opacity: .7; }
+html[data-theme="night"] .welcome-foot { border-top-color: var(--line); color: var(--faint); }
+html[data-theme="night"] .welcome-foot span:last-child { color: var(--faint); }
+
+/* ---------------- 拖动条 / 空状态 ---------------- */
+html[data-theme="night"] .col-grip::after { background: transparent; }
+html[data-theme="night"] .col-grip:hover::after,
+html[data-theme="night"] .col-grip.is-active::after {
+  background: linear-gradient(180deg, transparent, var(--accent), transparent);
+}
+html[data-theme="night"] .tree-empty p,
+html[data-theme="night"] .folder-empty { color: var(--muted); }
+html[data-theme="night"] .skeleton-line { background: linear-gradient(90deg, #15112B 20%, #241C44 50%, #15112B 80%); }
+
+/* 顶栏「电源线」上的一道光扫过：只在夜晚模式，且尊重减少动效 */
+@keyframes cbSweep {
+  0% { transform: translateX(-30%); opacity: 0; }
+  18% { opacity: .85; }
+  62% { opacity: .85; }
+  100% { transform: translateX(130%); opacity: 0; }
+}
+html[data-theme="night"] .topbar::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 22%;
+  background: linear-gradient(90deg, transparent, rgba(53, 230, 203, .10), transparent);
+  animation: cbSweep 9s linear infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="night"] .topbar::before { animation: none; opacity: 0; }
+}
+
+/* ===========================================================================
+   雨夜玻璃（raindrop-fx · 官方原图「Ash / 灰」）
+   这是干什么的：真实雨珠 canvas 当「窗外」——在网格雾(0)之上、界面(2)之下。
+   窗外是库作者 demo 配的那张雨天废墟原图，雨珠在上面生成、滑落、折射窗外景物；
+   界面面板半透明浮在雨上面，透过面板能看见会动的雨，文字照旧清晰。
+   鼠标移动时窗外随指针轻微位移、雨珠高光跟着走，不是一张静态图。
+   回滚：删掉本区块 + index.html 末尾两个 script，回到原来的纯夜晚界面。
+   =========================================================================== */
+.rain-fx-canvas {
+  display: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;                                 /* 在网格雾(0)之上，界面(2)之下 = 窗外 */
+  pointer-events: none;                       /* 不拦点击、不拦选中与复制 */
+  filter: brightness(var(--rain-lum)) contrast(1.08) saturate(.92);
+  /* 视差：预先放大 32% 留出位移余量（面板最大 120px 也不露边），位移由 rain-night.js 写。
+     放大倍数必须与 rain-night.js 的 SCALE 一致，否则露边或位移量对不上。 */
+  transform: scale(1.32);
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+html.rain-fx-on[data-theme="night"] .rain-fx-canvas { display: block; }
+/* 界面抬到雨层之上：带字的窗口在雨上面，文字永不被雨盖住 */
+html.rain-fx-on[data-theme="night"] .app-shell { z-index: 2; }
+
+/* ===========================================================================
+   雨夜调参面板（顶栏「雨」按钮）
+   这是干什么的：把雨夜的 3 个样式变量（--rain-blur / --rain-alpha / --rain-lum）
+   和 3 个脚本参数（晃动幅度 / 雨珠大小 / 雨量）做成滑块，她自己拖，不改代码。
+   值存 localStorage，重开客户端还在；「恢复默认」一键回到出厂值（随机保持开）。
+   面板只在夜晚模式出现：白天 .rain-tune-btn 与 .rain-tune 一起 display:none。
+   =========================================================================== */
+html:not([data-theme="night"]) .rain-tune-btn { display: none; }
+html:not([data-theme="night"]) .rain-tune { display: none; }
+
+.rain-tune-btn.is-active {
+  color: #35E6CB;
+  border-color: rgba(53, 230, 203, .55);
+  background: rgba(53, 230, 203, .1);
+}
+
+.rain-tune {
+  position: fixed;
+  z-index: 60;
+  width: 302px;
+  padding: 14px 16px 12px;
+  display: none;
+  background: rgba(9, 7, 19, .97);
+  border: 1px solid rgba(176, 114, 255, .34);
+  border-radius: 5px;
+  box-shadow: 0 26px 64px -28px #000, inset 0 1px 0 rgba(255, 255, 255, .06);
+  color: #EDE9FF;
+  font-size: 12px;
+  font-family: inherit;
+}
+.rain-tune.is-open { display: block; }
+
+.rain-tune__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 13px;
+}
+.rain-tune__title { font-size: 13px; letter-spacing: .05em; color: #EDE9FF; }
+.rain-tune__hint { font-size: 11px; color: rgba(198, 190, 232, .58); }
+
+.rain-tune__row + .rain-tune__row { margin-top: 11px; }
+.rain-tune__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+.rain-tune__name { color: #C6BEE8; }
+.rain-tune__val {
+  color: #35E6CB;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+
+.rain-tune input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+.rain-tune input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(176, 114, 255, .85), rgba(53, 230, 203, .5));
+}
+.rain-tune input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #EDE9FF;
+  box-shadow: 0 0 10px -1px rgba(176, 114, 255, .95), 0 0 0 1px rgba(9, 7, 19, .9);
+}
+.rain-tune input[type="range"]:focus-visible { outline: 2px solid rgba(53, 230, 203, .6); outline-offset: 4px; }
+
+.rain-tune__foot {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(176, 114, 255, .16);
+}
+.rain-tune__btn {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 12px;
+  color: #C6BEE8;
+  background: rgba(28, 23, 54, .7);
+  border: 1px solid rgba(176, 114, 255, .26);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.rain-tune__btn:hover { color: #EDE9FF; border-color: rgba(176, 114, 255, .55); }
+.rain-tune__btn--close:hover { color: #35E6CB; border-color: rgba(53, 230, 203, .5); }
+
+/* 随机变化开关：一整条按钮，开着时填充青紫渐变，一眼看出状态 */
+.rain-tune__toggle {
+  width: 100%;
+  margin-top: 5px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: #C6BEE8;
+  background: rgba(28, 23, 54, .7);
+  border: 1px solid rgba(176, 114, 255, .26);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color .14s, background .14s, border-color .14s;
+}
+.rain-tune__toggle:hover { color: #EDE9FF; border-color: rgba(176, 114, 255, .55); }
+.rain-tune__toggle.is-on {
+  color: #0A0714;
+  font-weight: 600;
+  background: linear-gradient(90deg, rgba(176, 114, 255, .95), rgba(53, 230, 203, .9));
+  border-color: transparent;
+}

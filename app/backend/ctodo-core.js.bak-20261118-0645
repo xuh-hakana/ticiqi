@@ -1,0 +1,768 @@
+'use strict';
+/**
+ * ctodo-core.js —— C_TODO 统一需求内核 · 阶段 1~3 数据主干 + 状态机 + C_TODO.md 生成
+ *
+ * 这是干什么的：在阶段 0 的 SQLite 地基（ctodo-db.js）之上，实现规格要求的核心操作——
+ *   阶段 1：项目 CRUD、任意深度节点树、需求新增/编辑/补充/changes/归档恢复、事务封装
+ *   阶段 2：三区分组、聚合状态、搜索定位、C_TODO.md 三区生成
+ *   阶段 3：手动完成/确认转正/重新打开/标错/AI新增/AI清理、version 校验、C_DONE 同步
+ *
+ * 设计约束（来自规格与用户长期规矩）：
+ *   - 单一数据源：SQLite 是唯一真相；C_TODO.md / C_DONE/{id}.md / C_DETAIL 全部由这里生成。
+ *   - 事务性：所有写操作 BEGIN/COMMIT，失败 ROLLBACK，不进失效，抛错给上层提示。
+ *   - 文件层写 <appRoot>/.ticiqi/，与现有 C_DONE.jsonl 同级，不碰旧索引。
+ *   - 不复制接入规则原文，只读正本（沿用 CTodoDB.accessRule）。
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { CTodoDB, SEGMENT_COLUMNS } = require('./ctodo-db');
+
+const GROUP_SQL = {
+  // 参与聚合的叶子：待办+想法+三完成态，未归档
+  aggregateLeaves: `status IN ('todo','idea','done_user','done_ai','ai_done') AND archived=0`,
+};
+
+function now() { return Date.now(); }
+function jparse(text, fallback) {
+  if (text === null || text === undefined) return fallback;
+  try { return JSON.parse(text); } catch (_) { return fallback; }
+}
+function jstr(v) { return JSON.stringify(v === undefined ? null : v); }
+
+class CTodoCore {
+  /**
+   * @param {string} dbPath SQLite 文件绝对路径
+   * @param {string} appRoot 项目根（.ticiqi 文件层 + 接入规则正本都在这里）
+   */
+  constructor(dbPath, appRoot) {
+    this.appRoot = path.resolve(appRoot);
+    this.db = new CTodoDB(dbPath, appRoot);
+    this.todoDir = path.join(this.appRoot, '.ticiqi');
+    this.detailDir = path.join(this.todoDir, 'C_DONE');       // 完成详情（沿用规格 C_DONE/{id}.md）
+    this.cdetailDir = path.join(this.todoDir, 'C_DETAIL');    // 同步待办分段详情
+    this.todoMd = path.join(this.todoDir, 'C_TODO.md');
+  }
+
+  close() { this.db.close(); }
+
+  // -------------------------------------------------------------------------
+  // 事务封装：失败回滚，不进失效
+  // -------------------------------------------------------------------------
+  tx(fn) {
+    this.db.db.exec('BEGIN');
+    try {
+      const out = fn();
+      this.db.db.exec('COMMIT');
+      return out;
+    } catch (err) {
+      try { this.db.db.exec('ROLLBACK'); } catch (_) { /* ignore */ }
+      throw err;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 阶段 1 · 项目
+  // -------------------------------------------------------------------------
+  listProjects() {
+    return this.db.db.prepare('SELECT * FROM projects WHERE archived=0 ORDER BY createdAt ASC').all()
+      .map(r => this._project(r));
+  }
+
+  _project(r) {
+    return {
+      id: r.id, name: r.name, folderName: r.folderName,
+      createdAt: r.createdAt, updatedAt: r.updatedAt,
+      archived: !!r.archived, meta: jparse(r.meta, {}),
+    };
+  }
+
+  getProject(id) {
+    const r = this.db.db.prepare('SELECT * FROM projects WHERE id=?').get(id);
+    return r ? this._project(r) : null;
+  }
+
+  currentProjectId() { return this.db.getSetting('currentProjectId', null); }
+
+  createProject(name, folderName) {
+    name = String(name || '').trim();
+    if (!name) throw new Error('项目名不能为空');
+    const id = 'proj_' + now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const t = now();
+    return this.tx(() => {
+      this.db.db.prepare(
+        'INSERT INTO projects(id,name,folderName,createdAt,updatedAt,archived,meta) VALUES(?,?,?,?,?,0,?)'
+      ).run(id, name, folderName || name, t, t, '{}');
+      this.db.setSetting('currentProjectId', id);
+      return this.getProject(id);
+    });
+  }
+
+  switchProject(id) {
+    if (!this.getProject(id)) throw new Error('项目不存在');
+    this.db.setSetting('currentProjectId', id);
+    return this.getProject(id);
+  }
+
+  renameProject(id, name) {
+    name = String(name || '').trim();
+    if (!name) throw new Error('项目名不能为空');
+    return this.tx(() => {
+      this.db.db.prepare('UPDATE projects SET name=?,updatedAt=? WHERE id=?').run(name, now(), id);
+      return this.getProject(id);
+    });
+  }
+
+  archiveProject(id, archived) {
+    return this.tx(() => {
+      const before = this.getProject(id);
+      if (!before) throw new Error('项目不存在');
+      this._snapshot(id, archived ? 'project_archive' : 'project_restore', before);
+      this.db.db.prepare('UPDATE projects SET archived=?,updatedAt=? WHERE id=?').run(archived ? 1 : 0, now(), id);
+      return this.getProject(id);
+    });
+  }
+
+  _snapshot(projectId, type, payload) {
+    const id = 'snap_' + now().toString(36) + Math.random().toString(36).slice(2, 6);
+    this.db.db.prepare(
+      'INSERT INTO projectSnapshots(id,projectId,type,payload,createdAt) VALUES(?,?,?,?,?)'
+    ).run(id, projectId, type, jstr(payload), now());
+    return id;
+  }
+
+  // -------------------------------------------------------------------------
+  // 阶段 1 · 节点树（任意深度，treePath 自动计算）
+  // -------------------------------------------------------------------------
+  listNodes(projectId) {
+    return this.db.db.prepare('SELECT * FROM nodes WHERE projectId=?').all(projectId)
+      .map(r => this._node(r));
+  }
+
+  _node(r) {
+    return {
+      nodeId: r.nodeId, projectId: r.projectId, parentId: r.parentId || null,
+      type: r.type, name: r.name, path: r.path,
+      aggregateStatus: r.aggregateStatus || null, snapshotId: r.snapshotId || null,
+    };
+  }
+
+  /** treePath = 从根到本节点的名字链，用 / 连接；父 path 已在库里则直接拼。 */
+  _computePath(projectId, parentId, name) {
+    if (!parentId) return String(name);
+    const parent = this.db.db.prepare('SELECT path FROM nodes WHERE nodeId=? AND projectId=?').get(parentId, projectId);
+    if (!parent) throw new Error('父节点不存在');
+    return (parent.path ? parent.path + '/' : '') + name;
+  }
+
+  addNode(projectId, name, parentId, type) {
+    name = String(name || '').trim();
+    if (!name) throw new Error('节点名不能为空');
+    type = type === 'project' ? 'project' : 'feature';
+    const nodeId = this.db.nextId('node', projectId);
+    return this.tx(() => {
+      const p = this._computePath(projectId, parentId || null, name);
+      this.db.db.prepare(
+        'INSERT INTO nodes(nodeId,projectId,parentId,type,name,path) VALUES(?,?,?,?,?,?)'
+      ).run(nodeId, projectId, parentId || null, type, name, p);
+      return this.getNode(nodeId);
+    });
+  }
+
+  getNode(nodeId) {
+    const r = this.db.db.prepare('SELECT * FROM nodes WHERE nodeId=?').get(nodeId);
+    return r ? this._node(r) : null;
+  }
+
+  renameNode(nodeId, name) {
+    name = String(name || '').trim();
+    if (!name) throw new Error('节点名不能为空');
+    return this.tx(() => {
+      const node = this.getNode(nodeId);
+      if (!node) throw new Error('节点不存在');
+      this.db.db.prepare('UPDATE nodes SET name=? WHERE nodeId=?').run(name, nodeId);
+      this._repathSubtree(nodeId);
+      this.markAncestorsDirty(nodeId);
+      return this.getNode(nodeId);
+    });
+  }
+
+  /** 改名/移动后重算本节点及所有后代的 path。 */
+  _repathSubtree(nodeId) {
+    const node = this.getNode(nodeId);
+    if (!node) return;
+    const parent = node.parentId ? this.getNode(node.parentId) : null;
+    const base = parent && parent.path ? parent.path + '/' : '';
+    this.db.db.prepare('UPDATE nodes SET path=? WHERE nodeId=?').run(base + node.name, nodeId);
+    const kids = this.db.db.prepare('SELECT nodeId FROM nodes WHERE parentId=?').all(nodeId);
+    for (const k of kids) this._repathSubtree(k.nodeId);
+  }
+
+  deleteNode(nodeId) {
+    return this.tx(() => {
+      const kids = this.db.db.prepare('SELECT COUNT(*) n FROM nodes WHERE parentId=?').get(nodeId).n;
+      const reqs = this.db.db.prepare('SELECT COUNT(*) n FROM requirements WHERE nodeId=?').get(nodeId).n;
+      if (kids || reqs) throw new Error('节点非空（有子节点或需求），不能删除');
+      this.db.db.prepare('DELETE FROM nodes WHERE nodeId=?').run(nodeId);
+      return { ok: true };
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // 阶段 1 · 需求 CRUD
+  // -------------------------------------------------------------------------
+  _requirement(r) {
+    if (!r) return null;
+    return {
+      id: r.id, projectId: r.projectId, nodeId: r.nodeId || null, treePath: r.treePath || null,
+      title: r.title || null, text: r.text,
+      displayTitle: r.title || String(r.text).replace(/\s+/g, ' ').slice(0, 16),
+      supplements: jparse(r.supplements, []), status: r.status, source: r.source || null,
+      priority: r.priority, summary: r.summary || null, acceptance: r.acceptance || null,
+      segments: {
+        applicationScene: r.applicationScene, background: r.background, frontend: r.frontend,
+        backend: r.backend, dataSource: r.dataSource, frontendLayout: r.frontendLayout,
+      },
+      relatedIds: jparse(r.relatedIds, []), fromReq: r.fromReq || null,
+      changes: jparse(r.changes, []), archived: !!r.archived,
+      archivedFrom: jparse(r.archivedFrom, null),
+      createdAt: r.createdAt, updatedAt: r.updatedAt, syncCount: r.syncCount,
+      version: r.version, viewed: !!r.viewed,
+      doneReport: jparse(r.doneReport, null), doneHistory: jparse(r.doneHistory, []),
+      partialReport: jparse(r.partialReport, null), partialAbandoned: !!r.partialAbandoned,
+    };
+  }
+
+  getRequirement(id) {
+    return this._requirement(this.db.db.prepare('SELECT * FROM requirements WHERE id=?').get(id));
+  }
+
+  listRequirements(projectId) {
+    return this.db.db.prepare('SELECT * FROM requirements WHERE projectId=? ORDER BY createdAt ASC,id ASC').all(projectId)
+      .map(r => this._requirement(r));
+  }
+
+  addRequirement(projectId, text, opts) {
+    text = String(text || '').trim();
+    if (!text) throw new Error('需求原文不能为空');
+    opts = opts || {};
+    const id = this.db.nextId('req', projectId);
+    const t = now();
+    let nodeId = opts.nodeId || null;
+    let treePath = opts.treePath || '';
+    if (nodeId) {
+      const node = this.getNode(nodeId);
+      if (!node) throw new Error('节点不存在');
+      treePath = node.path;
+    }
+    return this.tx(() => {
+      this.db.db.prepare(`
+        INSERT INTO requirements(id,projectId,nodeId,treePath,title,text,supplements,status,source,priority,
+          summary,acceptance,applicationScene,background,frontend,backend,dataSource,frontendLayout,
+          relatedIds,fromReq,changes,archived,createdAt,updatedAt,syncCount,version,viewed,doneHistory,partialAbandoned)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(
+        id, projectId, nodeId, treePath, opts.title || null, text, '[]',
+        opts.status || 'todo', opts.source || null, opts.priority || 'medium',
+        opts.summary || null, opts.acceptance || null,
+        opts.applicationScene || null, opts.background || null, opts.frontend || null,
+        opts.backend || null, opts.dataSource || null, opts.frontendLayout || null,
+        jstr(opts.relatedIds || []), opts.fromReq || null, '[]', 0,
+        t, t, 0, 1, opts.viewed ? 1 : 0, '[]', 0
+      );
+      if (nodeId) this.markAncestorsDirty(nodeId);
+      return this.getRequirement(id);
+    });
+  }
+
+  /** 编辑（只追加 changes）：正常状态 text 不可改删，只能改标题/优先级/六段；ai_done 可改写 text。 */
+  editRequirement(id, patch) {
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      const t = now();
+      const changes = r.changes.slice();
+      const sets = [];
+      const vals = [];
+      const canEditText = r.status === 'ai_done';
+      for (const key of ['title', 'priority', 'summary', 'acceptance', ...SEGMENT_COLUMNS]) {
+        if (patch[key] === undefined) continue;
+        const isSeg = SEGMENT_COLUMNS.includes(key);
+        const oldVal = isSeg ? (r.segments ? r.segments[key] : null) : r[key];
+        if (String(oldVal == null ? '' : oldVal) !== String(patch[key] == null ? '' : patch[key])) {
+          changes.push({ field: key, old: oldVal, new: patch[key], time: t });
+          sets.push(key + '=?');
+          vals.push(patch[key] || null);
+        }
+      }
+      if (patch.text !== undefined && canEditText && patch.text !== r.text) {
+        changes.push({ field: 'text', old: r.text, new: patch.text, time: t });
+        sets.push('text=?'); vals.push(patch.text);
+      }
+      if (!sets.length) return this.getRequirement(id);
+      sets.push('changes=?', 'version=version+1', 'updatedAt=?');
+      vals.push(jstr(changes), t, id);
+      this.db.db.prepare(`UPDATE requirements SET ${sets.join(',')} WHERE id=?`).run(...vals);
+      return this.getRequirement(id);
+    });
+  }
+
+  /** 补充：只追加 supplements，不改原文。 */
+  supplement(id, text) {
+    text = String(text || '').trim();
+    if (!text) throw new Error('补充内容不能为空');
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      const sups = r.supplements.concat([{ text, time: now() }]);
+      this.db.db.prepare('UPDATE requirements SET supplements=?,updatedAt=? WHERE id=?').run(jstr(sups), now(), id);
+      return this.getRequirement(id);
+    });
+  }
+
+  archiveRequirement(id) {
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      if (r.archived) throw new Error('已归档，无需重复归档');
+      const snap = {
+        status: r.status, source: r.source, doneReport: r.doneReport,
+        partialReport: r.partialReport, partialAbandoned: r.partialAbandoned,
+      };
+      this.db.db.prepare(
+        'UPDATE requirements SET archived=1,archivedFrom=?,version=version+1,updatedAt=? WHERE id=?'
+      ).run(jstr(snap), now(), id);
+      this._snapshot(r.projectId, 'archive', { id, from: snap });
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return this.getRequirement(id);
+    });
+  }
+
+  restoreRequirement(id) {
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      if (!r.archived) throw new Error('未归档，无需恢复');
+      const from = r.archivedFrom || {};
+      this.db.db.prepare(`
+        UPDATE requirements SET archived=0,archivedFrom=NULL,status=?,source=?,doneReport=?,
+          partialReport=?,partialAbandoned=?,version=version+1,updatedAt=? WHERE id=?
+      `).run(
+        from.status || 'todo', from.source || null, jstr(from.doneReport || null),
+        jstr(from.partialReport || null), from.partialAbandoned ? 1 : 0, now(), id
+      );
+      this._snapshot(r.projectId, 'restore', { id });
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return this.getRequirement(id);
+    });
+  }
+
+  /** 想法 ↔ 待办：记 changes；todo→idea 清 partial；idea→todo 清 syncCount。 */
+  setStatusSimple(id, target) {
+    if (!['todo', 'idea'].includes(target)) throw new Error('目标状态只能是 todo 或 idea');
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      if (!['todo', 'idea'].includes(r.status)) throw new Error('只有待办/想法可互转');
+      const t = now();
+      const changes = r.changes.concat([{ field: 'status', old: r.status, new: target, time: t }]);
+      const syncCount = target === 'todo' ? 0 : r.syncCount;
+      const clearPartial = r.status === 'todo' && target === 'idea';
+      this.db.db.prepare(`
+        UPDATE requirements SET status=?,changes=?,syncCount=?,
+          partialReport=?,partialAbandoned=?,version=version+1,updatedAt=? WHERE id=?
+      `).run(
+        target, jstr(changes), syncCount,
+        clearPartial ? null : jstr(r.partialReport), clearPartial ? 0 : r.partialAbandoned ? 1 : 0,
+        t, id
+      );
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return this.getRequirement(id);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // 阶段 2 · 三区分组 + 聚合状态 + 搜索
+  // -------------------------------------------------------------------------
+  /** 返回整棵树（节点数组 + 每节点三区需求），供文字视图一次渲染。 */
+  tree(projectId, includeInvalid) {
+    const nodes = this.listNodes(projectId);
+    const reqs = this.listRequirements(projectId);
+    const byNode = {};
+    for (const n of nodes) byNode[n.nodeId] = [];
+    for (const r of reqs) {
+      const k = r.nodeId || '__root__';
+      (byNode[k] = byNode[k] || []).push(r);
+    }
+    const groupsOf = (list) => {
+      const todo = list.filter(r => !r.archived && (r.status === 'todo' || r.status === 'idea'));
+      const doneUser = list.filter(r => !r.archived && r.status === 'done_user');
+      const doneAi = list.filter(r => !r.archived && r.status === 'done_ai');
+      const aiNew = list.filter(r => !r.archived && r.status === 'ai_done');
+      const invalid = list.filter(r => r.doneHistory.length > 0 && !todo.includes(r) && !doneUser.includes(r) && !doneAi.includes(r) && !aiNew.includes(r));
+      const archived = list.filter(r => r.archived);
+      return { todo, done: { user: doneUser, ai: doneAi, aiNew }, invalid, archived };
+    };
+    const decorated = nodes.map(n => ({
+      ...n,
+      groups: groupsOf(byNode[n.nodeId] || []),
+      aggregateStatus: this._aggregateSubtree(n.nodeId, projectId, nodes, byNode, !!includeInvalid),
+    }));
+    // 计算完聚合状态写回库（供搜索/三视图复用），不改业务字段
+    for (const n of decorated) {
+      this.db.db.prepare('UPDATE nodes SET aggregateStatus=? WHERE nodeId=?').run(n.aggregateStatus, n.nodeId);
+    }
+    return { projectId, nodes: decorated, root: groupsOf(byNode['__root__'] || []) };
+  }
+
+  /** 递归聚合：本节点所有后代的参与叶子，按四态判定。 */
+  _aggregateSubtree(nodeId, projectId, nodes, byNode, includeInvalid) {
+    const childIds = nodes.filter(n => n.parentId === nodeId).map(n => n.nodeId);
+    let leaves = [];
+    for (const cid of childIds) leaves = leaves.concat(this._leavesUnder(cid, byNode, includeInvalid));
+    // 直接挂在本节点的需求也算
+    leaves = leaves.concat(this._statusesOf(byNode[nodeId] || [], includeInvalid));
+    const st = new Set(leaves);
+    st.delete(null);
+    if (!st.size) return null;
+    if (st.size === 1) {
+      const only = [...st][0];
+      if (only === 'invalid') return '失效';
+      if (only === 'todo') return '待办';
+      if (only === 'done') return '已完成';
+    }
+    if (st.has('invalid') && st.size === 1) return '失效';
+    const hasTodo = st.has('todo');
+    const hasDone = st.has('done');
+    const hasInvalid = st.has('invalid');
+    if (hasTodo && hasDone) return '半完成';
+    if (hasTodo && hasInvalid && includeInvalid) return '半完成';
+    if (hasDone && hasInvalid && includeInvalid) return '半完成';
+    if (hasInvalid && !hasTodo && !hasDone) return '失效';
+    return hasTodo ? '待办' : hasDone ? '已完成' : null;
+  }
+
+  _leavesUnder(nodeId, byNode, includeInvalid) {
+    const kids = this.db.db.prepare('SELECT nodeId FROM nodes WHERE parentId=?').all(nodeId).map(r => r.nodeId);
+    let out = this._statusesOf(byNode[nodeId] || [], includeInvalid);
+    for (const k of kids) out = out.concat(this._leavesUnder(k, byNode, includeInvalid));
+    return out;
+  }
+
+  _statusesOf(list, includeInvalid) {
+    const out = [];
+    for (const r of list) {
+      if (r.archived) continue;
+      if (r.status === 'todo' || r.status === 'idea') out.push('todo');
+      else if (r.status === 'done_user' || r.status === 'done_ai' || r.status === 'ai_done') out.push('done');
+      else if (includeInvalid && r.doneHistory.length) out.push('invalid');
+    }
+    return out;
+  }
+
+  markAncestorsDirty(nodeId) {
+    const node = this.getNode(nodeId);
+    if (!node || !node.parentId) return;
+    let cur = node.parentId;
+    const seen = new Set();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      this.db.db.prepare('UPDATE nodes SET aggregateStatus=NULL WHERE nodeId=?').run(cur);
+      const p = this.getNode(cur);
+      cur = p ? p.parentId : null;
+    }
+  }
+
+  /** 搜索：优先 title（含默认标题=text 前16字），其次原文和六段。 */
+  search(projectId, q) {
+    q = String(q || '').trim().toLowerCase();
+    if (!q) return [];
+    return this.listRequirements(projectId).filter(r => {
+      const title = String(r.displayTitle || '').toLowerCase();
+      if (title.includes(q)) return true;
+      if (String(r.text).toLowerCase().includes(q)) return true;
+      for (const v of Object.values(r.segments)) if (String(v || '').toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }
+
+  /** 前置检查：pending 表里未处理项数量。 */
+  pendingCount() {
+    return this.db.db.prepare("SELECT COUNT(*) n FROM pending WHERE state='pending'").get().n;
+  }
+
+  // -------------------------------------------------------------------------
+  // 阶段 2 · C_TODO.md 三区生成（同步待办）
+  // -------------------------------------------------------------------------
+  /** 计算本轮要写入的用户待办（≤5）：todo 未归档，按优先级+createdAt+id 排序。 */
+  pickUserTodos(projectId, nodeId) {
+    let list = this.listRequirements(projectId).filter(r => r.status === 'todo' && !r.archived);
+    if (nodeId) {
+      const node = this.getNode(nodeId);
+      if (node) {
+        const pathPrefix = node.path + '/';
+        list = list.filter(r => r.nodeId === nodeId || (r.treePath && r.treePath.startsWith(pathPrefix)));
+      }
+    }
+    const rank = { high: 0, medium: 1, low: 2 };
+    list.sort((a, b) => (rank[a.priority] - rank[b.priority]) || (a.createdAt - b.createdAt) || a.id.localeCompare(b.id));
+    return list.slice(0, 5);
+  }
+
+  /** AI待办：ai_done 未归档，≥3 才启用，createdAt 升序，占满剩余名额。 */
+  pickAiTodos(projectId, userCount) {
+    const all = this.listRequirements(projectId).filter(r => r.status === 'ai_done' && !r.archived);
+    if (all.length < 3) return { enabled: false, list: [], total: all.length };
+    all.sort((a, b) => a.createdAt - b.createdAt);
+    const slots = Math.max(0, 5 - userCount);
+    return { enabled: slots > 0, list: all.slice(0, slots), total: all.length };
+  }
+
+  /** 生成 C_TODO.md 文本（不写盘；写盘在 sync）。 */
+  buildTodoMd(projectId, nodeId) {
+    const users = this.pickUserTodos(projectId, nodeId);
+    const ai = this.pickAiTodos(projectId, users.length);
+    const L = [];
+    L.push('<!-- 未标注优先级的条目默认为中优先级 -->', '');
+    L.push('## 用户待办', '');
+    if (!users.length) {
+      L.push('（当前节点没有待办）', '');
+    } else {
+      for (const r of users) {
+        L.push('### ' + r.id, '');
+        L.push('version: ' + r.version, '');
+        L.push('路径：' + (r.treePath || '（未归属）'), '');
+        L.push('优先级：' + ({ high: '高', medium: '中', low: '低' }[r.priority] || '中'), '');
+        L.push('原文：' + r.text, '');
+        if (r.acceptance) L.push('验收标准：' + r.acceptance, '');
+        if (r.partialReport && !r.partialAbandoned) L.push('上次进度：' + (r.partialReport.summary || ''), '');
+        L.push('');
+      }
+    }
+    L.push('## AI待办（请检查以下AI新增条目是否仍有效）', '');
+    if (ai.enabled && ai.list.length) {
+      for (const r of ai.list) {
+        L.push('### ' + r.id, '');
+        L.push('AI认为要做的事：' + r.text, '');
+        if (r.summary) L.push('你上次的总结：' + r.summary, '');
+        L.push('完成时间：' + new Date(r.updatedAt).toISOString(), '');
+        if (r.fromReq) L.push('关联用户待办：' + r.fromReq, '');
+        L.push('用户已查看：' + (r.viewed ? '是（不可自动清理，需用户处理）' : '否'), '');
+        L.push('');
+      }
+    } else {
+      L.push('（无）', '');
+    }
+    L.push('## 待修复', '');
+    const mis = fs.existsSync(path.join(this.todoDir, 'C_MISCLASSIFIED.jsonl'))
+      ? fs.readFileSync(path.join(this.todoDir, 'C_MISCLASSIFIED.jsonl'), 'utf8').split('\n').filter(Boolean).length : 0;
+    const moveDir = path.join(this.todoDir, 'C_MOVE_PENDING');
+    const moves = fs.existsSync(moveDir) ? fs.readdirSync(moveDir).filter(f => f.endsWith('.md')).length : 0;
+    L.push('归属误判：' + mis + '条，详见 .ticiqi/C_MISCLASSIFIED.jsonl（不存在视为无）', '');
+    L.push('节点移动待检查：' + moves + '条，详见 .ticiqi/C_MOVE_PENDING/（不存在视为无）', '');
+    L.push('');
+    const rule = this.db.accessRule();
+    if (rule) { L.push('---', '', '<!-- 协议尾：AI 接入规则摘要，正本见 需求/文档一-AI接入规则.md -->', '', rule.trim(), ''); }
+    const notes = [];
+    if (ai.total > users.length && ai.total > 5 - users.length) notes.push('还有 ' + (ai.total - Math.max(0, 5 - users.length)) + ' 条 AI待办未检查');
+    return { md: L.join('\n'), userTodos: users, aiTodos: ai.list, notes, pending: this.pendingCount() };
+  }
+
+  /** 同步待办：写 C_TODO.md + C_DETAIL/{id}/ + 更新 lastTodoIds（事务性）。 */
+  sync(projectId, nodeId) {
+    const built = this.buildTodoMd(projectId, nodeId);
+    return this.tx(() => {
+      fs.mkdirSync(this.todoDir, { recursive: true });
+      fs.writeFileSync(this.todoMd, built.md, 'utf8');
+      fs.mkdirSync(this.cdetailDir, { recursive: true });
+      for (const r of built.userTodos.concat(built.aiTodos)) {
+        const d = path.join(this.cdetailDir, r.id);
+        fs.mkdirSync(d, { recursive: true });
+        for (const [i, seg] of SEGMENT_COLUMNS.entries()) {
+          const val = r.segments[seg];
+          if (val) fs.writeFileSync(path.join(d, (i + 1) + '-' + seg + '.md'), String(val), 'utf8');
+        }
+      }
+      this.db.setSetting('lastTodoIds', built.userTodos.map(r => r.id));
+      return {
+        ok: true, file: '.ticiqi/C_TODO.md', userCount: built.userTodos.length,
+        aiCount: built.aiTodos.length, notes: built.notes, pending: built.pending,
+      };
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // 阶段 3 · 完成状态机（全部事务性 + version 校验 + C_DONE 同步）
+  // -------------------------------------------------------------------------
+  _assertVersion(id, expected) {
+    const r = this.getRequirement(id);
+    if (!r) throw new Error('需求不存在');
+    if (expected !== undefined && expected !== null && Number(expected) !== r.version) {
+      throw new Error('AI工作期间该需求被修改，报告作废，请重新同步（当前 version=' + r.version + '）');
+    }
+    if (r.archived) throw new Error('需求已归档，操作作废');
+    return r;
+  }
+
+  _writeDoneDetail(r, extra) {
+    fs.mkdirSync(this.detailDir, { recursive: true });
+    const rep = r.doneReport || {};
+    const lines = [
+      '# ' + r.id + ' · 完成详情', '',
+      '- 标题：' + (r.displayTitle || ''), '',
+      '## 需求原文', '', r.text, '',
+      '## 完成改动位置', '', (rep.summary || extra || '（无）'), '',
+      '## 证据文件', '', (rep.evidence || []).join('、') || '（无）', '',
+      '## 改动文件', '', (rep.files || []).join('、') || '（无）', '',
+      '## 原因', '', rep.reason || '（无）', '',
+      '## 完成时间', '', new Date(rep.time || now()).toISOString(), '',
+      '> 由代码生成，勿手改。', '',
+    ];
+    fs.writeFileSync(path.join(this.detailDir, r.id + '.md'), lines.join('\n'), 'utf8');
+  }
+
+  _invalidateDoneDetail(id) {
+    const f = path.join(this.detailDir, id + '.md');
+    if (!fs.existsSync(f)) return;
+    let t = fs.readFileSync(f, 'utf8');
+    if (!t.startsWith('> 已失效')) t = '> 已失效（需求已重开或标记错误，见完成历史区）\n\n' + t;
+    fs.writeFileSync(f, t, 'utf8');
+  }
+
+  /** 手动完成（todo/idea）：summary=title || text 前30字。 */
+  completeManual(id, payload) {
+    payload = payload || {};
+    return this.tx(() => {
+      const r = this._assertVersion(id, payload.version);
+      if (!['todo', 'idea'].includes(r.status)) throw new Error('只有待办/想法可手动完成');
+      const t = now();
+      const summary = r.title || String(r.text).slice(0, 30);
+      const doneReport = {
+        summary, files: payload.files || [], evidence: payload.evidence || [],
+        reason: payload.reason || '', time: payload.time || t,
+      };
+      this.db.db.prepare(`
+        UPDATE requirements SET doneReport=?,status='done_user',source='user',
+          partialReport=NULL,partialAbandoned=0,version=version+1,updatedAt=? WHERE id=?
+      `).run(jstr(doneReport), t, id);
+      const after = this.getRequirement(id);
+      this._writeDoneDetail(after);
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return after;
+    });
+  }
+
+  /** 确认转正：status=todo + version 一致 + 未归档。 */
+  confirmAi(id, payload) {
+    payload = payload || {};
+    return this.tx(() => {
+      const r = this._assertVersion(id, payload.version);
+      if (r.status !== 'todo') throw new Error('只有 todo 可确认转正');
+      const t = now();
+      const doneReport = payload.doneReport || {
+        summary: r.title || String(r.text).slice(0, 30),
+        files: payload.files || [], evidence: payload.evidence || [], reason: payload.reason || '', time: t,
+      };
+      this.db.db.prepare(`
+        UPDATE requirements SET doneReport=?,status='done_ai',source='ai',syncCount=0,
+          partialReport=NULL,partialAbandoned=0,version=version+1,updatedAt=? WHERE id=?
+      `).run(jstr(doneReport), t, id);
+      const after = this.getRequirement(id);
+      this._writeDoneDetail(after);
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return after;
+    });
+  }
+
+  /** 重新打开（返工）：done_user/done_ai/ai_done 且未归档。 */
+  reopen(id) {
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      if (!['done_user', 'done_ai', 'ai_done'].includes(r.status)) throw new Error('只有已完成可重新打开');
+      if (r.archived) throw new Error('归档状态不可重开，需先恢复');
+      const t = now();
+      const hist = r.doneHistory.slice();
+      if (r.doneReport) hist.push({ ...r.doneReport, type: 'reopened', invalidatedAt: t, originalStatus: r.status });
+      this.db.db.prepare(`
+        UPDATE requirements SET doneReport=NULL,partialReport=NULL,partialAbandoned=0,syncCount=0,
+          status='todo',source=NULL,version=version+1,updatedAt=?,doneHistory=? WHERE id=?
+      `).run(t, jstr(hist), id);
+      this._invalidateDoneDetail(id);
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return this.getRequirement(id);
+    });
+  }
+
+  /** 标记错误（done_ai/done_user/ai_done）：改写 text，原记录进 doneHistory。 */
+  markWrong(id, newText, reason) {
+    newText = String(newText || '').trim();
+    if (!newText) throw new Error('改写后的原文不能为空');
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      if (!['done_ai', 'done_user', 'ai_done'].includes(r.status)) throw new Error('只有已完成可标记错误');
+      const t = now();
+      const hist = r.doneHistory.slice();
+      hist.push({
+        type: 'marked_wrong', text: r.text, summary: r.doneReport ? r.doneReport.summary : '',
+        files: r.doneReport ? r.doneReport.files : [], evidence: r.doneReport ? r.doneReport.evidence : [],
+        reason: reason || '', invalidatedAt: t, originalStatus: r.status,
+      });
+      this.db.db.prepare(`
+        UPDATE requirements SET text=?,status='todo',source=NULL,doneReport=NULL,
+          doneHistory=?,version=version+1,updatedAt=? WHERE id=?
+      `).run(newText, jstr(hist), t, id);
+      this._invalidateDoneDetail(id);
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return this.getRequirement(id);
+    });
+  }
+
+  /** AI新增确认（ai_done → done_ai）。 */
+  confirmAiNew(id) {
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      if (r.status !== 'ai_done') throw new Error('只有 AI新增 可确认');
+      this.db.db.prepare("UPDATE requirements SET status='done_ai',source='ai',version=version+1,updatedAt=? WHERE id=?")
+        .run(now(), id);
+      const after = this.getRequirement(id);
+      this._writeDoneDetail(after);
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return after;
+    });
+  }
+
+  /** AI清理：物理删除 ai_done 条目及 C_DONE/{id}.md，记 aiCleanupLog，不进 doneHistory。 */
+  aiCleanup(id, reason) {
+    return this.tx(() => {
+      const r = this.getRequirement(id);
+      if (!r) throw new Error('需求不存在');
+      if (r.status !== 'ai_done') throw new Error('只有 AI新增 可清理');
+      this.db.db.prepare(
+        'INSERT INTO aiCleanupLog(id,projectId,reqId,reason,time) VALUES(?,?,?,?,?)'
+      ).run('clean_' + now().toString(36), r.projectId, id, reason || '', now());
+      this.db.db.prepare('DELETE FROM requirements WHERE id=?').run(id);
+      const f = path.join(this.detailDir, id + '.md');
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+      if (r.nodeId) this.markAncestorsDirty(r.nodeId);
+      return { ok: true, id };
+    });
+  }
+
+  /** 总体概览：给前端一次拉全。 */
+  overview(projectId) {
+    const pid = projectId || this.currentProjectId();
+    return {
+      projectId: pid,
+      projects: this.listProjects(),
+      currentProjectId: this.currentProjectId(),
+      state: this.db.state(),
+      pending: this.pendingCount(),
+      tree: pid ? this.tree(pid, false) : null,
+    };
+  }
+}
+
+module.exports = { CTodoCore };

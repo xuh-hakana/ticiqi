@@ -1,0 +1,275 @@
+/* ===========================================================================
+   皮肤 A · 深霓虹（Nocturne 视觉语言，ticiqi 独立项目自写 · 2026-11-06）
+   ---------------------------------------------------------------------------
+   这是干什么的：近黑底 + 青/品红单霓虹 + 斜切角面板 + 边框发光，8 组动画。
+   只换外观：不动任何 DOM、不动任何功能逻辑；开关是 html[data-skin="nocturne"]。
+   与白天 / 夜晚并列：白天夜晚管 data-theme，本皮肤管 data-skin，切「原样」即回到原配色。
+
+   参考：Nocturne（Apache-2.0）的配色与切角规范；没有可直装的插件，落地为本地样式表。
+   对比度：正文 #E6F5FF / 底 #07060E ≈ 17.9:1；次要 #B9CBE6 / 底 ≈ 11.2:1（均 > 4.5:1）。
+   =========================================================================== */
+
+html[data-skin="nocturne"]:root,
+html[data-skin="nocturne"] {
+  color-scheme: dark;
+
+  --paper:        #07060E;
+  --surface:      #0D0B1A;
+  --surface-2:    #0A0815;
+  --surface-3:    #171233;
+  --ink:          #E6F5FF;
+  --ink-soft:     #D2E3F7;
+  --muted:        #B9CBE6;
+  --faint:        #8397B8;
+  --line:         #23204A;
+  --line-strong:  #3B3573;
+
+  --accent:       #35E6CB;
+  --accent-dark:  #7BFFEA;
+  --accent-soft:  #0D2E2C;
+  --accent-faint: #081C1C;
+
+  --cyan:         #35E6CB;
+  --cyan-soft:    #0C2E2B;
+  --green:        #55E39B;
+  --green-soft:   #0D2A21;
+  --amber:        #FFC24D;
+  --amber-soft:   #2C2312;
+  --red:          #FF6B86;
+  --red-soft:     #33141F;
+  --blue:         #7FA6FF;
+  --blue-soft:    #131C36;
+
+  --code-bg:      #05040B;
+  --code-bg-2:    #0A0817;
+  --code-line:    #191333;
+  --code-ink:     #D8F3FF;
+  --code-muted:   #6C7BA8;
+
+  --glass:        rgba(13, 11, 26, .93);
+  --card:         #0D0B1A;
+  --text:         #E6F5FF;
+  --card-shadow:  0 0 0 1px rgba(53, 230, 203, .12), 0 20px 44px -30px #000;
+  --card-shadow-hi: 0 0 0 1px rgba(53, 230, 203, .42), 0 0 26px -8px rgba(53, 230, 203, .55);
+  --shadow-sm:    0 1px 0 rgba(0, 0, 0, .5);
+  --shadow-md:    0 18px 40px -22px #000;
+  --shadow-lg:    0 40px 90px -40px #000;
+
+  --tc-neon:      #FF4FA3;
+  --tc-neon-soft: rgba(255, 79, 163, .16);
+
+  /* 下面 4 个沿用原值：字体与尺寸不属于配色，改了会动排版（她要求位置固定） */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --topbar-h: 54px;
+  --status-h: 28px;
+}
+
+/* ---------- 底色与斜切角 ---------- */
+html[data-skin="nocturne"] .app-shell,
+html[data-skin="nocturne"] .main-pane,
+html[data-skin="nocturne"] .prompt-view {
+  background: var(--surface-2);
+}
+html[data-skin="nocturne"] .prompt-head,
+html[data-skin="nocturne"] .tc-topbar,
+html[data-skin="nocturne"] .tc-dock,
+html[data-skin="nocturne"] .prompt-list-panel,
+html[data-skin="nocturne"] .prompt-detail,
+html[data-skin="nocturne"] .prompt-stats,
+html[data-skin="nocturne"] .tc-groups,
+html[data-skin="nocturne"] .tc-detail-slots {
+  background: var(--surface);
+  border-color: var(--line);
+}
+html[data-skin="nocturne"] .tc-topbar {
+  border-bottom: 1px solid var(--accent);
+  box-shadow: 0 1px 14px -6px var(--accent);
+}
+html[data-skin="nocturne"] .prompt-card,
+html[data-skin="nocturne"] .issue-card,
+html[data-skin="nocturne"] .modal,
+html[data-skin="nocturne"] .drawer,
+html[data-skin="nocturne"] .release-panel,
+html[data-skin="nocturne"] .skin-panel,
+html[data-skin="nocturne"] .issue-panel {
+  border-radius: 4px 12px 4px 12px;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 0 0 1px rgba(53, 230, 203, .08), 0 14px 34px -24px #000;
+}
+html[data-skin="nocturne"] .prompt-card.is-active,
+html[data-skin="nocturne"] .skin-option.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 20px -6px var(--accent-soft);
+}
+html[data-skin="nocturne"] .tc-btn,
+html[data-skin="nocturne"] .ghost-btn,
+html[data-skin="nocturne"] .tc-view-btn,
+html[data-skin="nocturne"] .tc-group-btn,
+html[data-skin="nocturne"] .primary-btn {
+  border-radius: 3px 8px 3px 8px;
+}
+
+/* ---------- 8 组动画 ---------- */
+/* 1 面板滑入 */
+@keyframes tcSlideIn {
+  from { opacity: 0; transform: translateY(9px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* 2 边框呼吸 */
+@keyframes tcBreathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(53,230,203,.16), 0 0 12px -8px rgba(53,230,203,.5); }
+  50%      { box-shadow: 0 0 0 1px rgba(53,230,203,.45), 0 0 22px -6px rgba(53,230,203,.7); }
+}
+/* 3 按钮扫光 */
+@keyframes tcSweep {
+  from { transform: translateX(-120%) skewX(-18deg); }
+  to   { transform: translateX(220%) skewX(-18deg); }
+}
+/* 4 页签指示条滑动 */
+@keyframes tcTabSlide {
+  from { transform: scaleX(0); opacity: .2; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+/* 5 状态点脉冲 */
+@keyframes tcDotPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(53,230,203,.55); }
+  70%      { box-shadow: 0 0 0 6px rgba(53,230,203,0); }
+}
+/* 6 卡片抬升（hover 用 transition + 关键帧微浮） */
+@keyframes tcCardLift {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-3px); }
+}
+/* 7 标题微光 */
+@keyframes tcTitleGlow {
+  0%, 100% { text-shadow: 0 0 8px rgba(53,230,203,.28); }
+  50%      { text-shadow: 0 0 18px rgba(53,230,203,.7), 0 0 3px rgba(255,79,163,.5); }
+}
+/* 8 代码区网格漂移 */
+@keyframes tcGridDrift {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 0 0, 32px 32px; }
+}
+
+html[data-skin="nocturne"] .prompt-head,
+html[data-skin="nocturne"] .tc-groups,
+html[data-skin="nocturne"] .tc-dock,
+html[data-skin="nocturne"] .prompt-stats,
+html[data-skin="nocturne"] .tc-segments,
+html[data-skin="nocturne"] .tc-detail-slots { animation: tcSlideIn .38s ease-out both; }
+html[data-skin="nocturne"] .tc-topbar { animation: tcBreathe 4.5s ease-in-out infinite; }
+html[data-skin="nocturne"] .tc-brand strong { animation: tcTitleGlow 3.6s ease-in-out infinite; }
+html[data-skin="nocturne"] .prompt-head-copy h1 {
+  color: var(--ink);
+  animation: tcTitleGlow 4.2s ease-in-out infinite;
+}
+html[data-skin="nocturne"] .tc-view-btn.is-active::after,
+html[data-skin="nocturne"] .tc-group-btn.is-active::after {
+  content: ""; display: block; height: 2px; margin-top: 3px;
+  background: var(--accent); border-radius: 2px;
+  transform-origin: left; animation: tcTabSlide .3s ease-out both;
+}
+html[data-skin="nocturne"] .status-dot,
+html[data-skin="nocturne"] .tc-light i,
+html[data-skin="nocturne"] .issue-badge { animation: tcDotPulse 2.2s ease-out infinite; }
+html[data-skin="nocturne"] .prompt-card:hover,
+html[data-skin="nocturne"] .issue-card:hover,
+html[data-skin="nocturne"] .skin-option:hover {
+  animation: tcCardLift .18s ease-out forwards;
+  border-color: var(--accent);
+}
+html[data-skin="nocturne"] .code-wrap,
+html[data-skin="nocturne"] .code-scroll {
+  background-image:
+    linear-gradient(rgba(53,230,203,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(53,230,203,.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  animation: tcGridDrift 14s linear infinite;
+}
+/* 扫光：挂在按钮的伪元素上，不吃点击 */
+html[data-skin="nocturne"] .primary-btn,
+html[data-skin="nocturne"] .tc-btn { position: relative; overflow: hidden; }
+html[data-skin="nocturne"] .primary-btn::after,
+html[data-skin="nocturne"] .tc-btn::after {
+  content: ""; position: absolute; top: -40%; left: 0;
+  width: 40%; height: 180%; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+  transform: translateX(-120%) skewX(-18deg);
+}
+html[data-skin="nocturne"] .primary-btn:hover::after,
+html[data-skin="nocturne"] .tc-btn:hover::after { animation: tcSweep .7s ease-out; }
+
+/* ---------- 文字可读性（深色上把字提亮） ---------- */
+html[data-skin="nocturne"] .eyebrow,
+html[data-skin="nocturne"] .tc-groups-label,
+html[data-skin="nocturne"] .tc-segments-head,
+html[data-skin="nocturne"] .tc-dock-label,
+html[data-skin="nocturne"] .prompt-head-copy p,
+html[data-skin="nocturne"] .prompt-stat,
+html[data-skin="nocturne"] .tc-slot-tag,
+html[data-skin="nocturne"] .tc-dock-slot,
+html[data-skin="nocturne"] .tc-seg,
+html[data-skin="nocturne"] .tc-subtab { color: var(--muted); }
+html[data-skin="nocturne"] .tc-dock-ver,
+html[data-skin="nocturne"] .tc-seg-note,
+html[data-skin="nocturne"] .skin-panel-note,
+html[data-skin="nocturne"] .skin-panel-foot { color: var(--faint); }
+html[data-skin="nocturne"] .issue-overlay,
+html[data-skin="nocturne"] .skin-overlay { background: rgba(4, 3, 10, .72); }
+html[data-skin="nocturne"] .tc-toast {
+  background: var(--accent-soft); color: var(--accent-dark);
+  border: 1px solid var(--accent);
+}
+
+/* 尊重系统「减少动态效果」：只关动画，不关配色（不删功能） */
+@media (prefers-reduced-motion: reduce) {
+  html[data-skin="nocturne"] *,
+  html[data-skin="nocturne"] *::before,
+  html[data-skin="nocturne"] *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; }
+}
+
+/* ---------- 深色表单控件（修真截图抓到的白底 bug） ----------
+   theme.css 把 .search-box / .text-input 硬编码成 #fff，只有 [data-theme=night] 做了覆盖；
+   皮肤走的是 data-skin，不会命中那条覆盖，导致浅色字压在白底上看不见。
+   这里在皮肤作用域内补齐，选择器带 html[data-skin] 保证优先级高于 theme.css。 */
+html[data-skin="nocturne"] .search-box,
+html[data-skin="nocturne"] .search-box:focus-within,
+html[data-skin="nocturne"] .text-input,
+html[data-skin="nocturne"] .note-input,
+html[data-skin="nocturne"] .prompt-textarea,
+html[data-skin="nocturne"] textarea,
+html[data-skin="nocturne"] select,
+html[data-skin="nocturne"] input[type="text"],
+html[data-skin="nocturne"] input[type="search"] {
+  background: var(--surface-2) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+html[data-skin="nocturne"] .search-box input,
+html[data-skin="nocturne"] input::placeholder,
+html[data-skin="nocturne"] textarea::placeholder { color: var(--muted) !important; opacity: 1; }
+html[data-skin="nocturne"] .ghost-btn:hover,
+html[data-skin="nocturne"] .small-btn:hover,
+html[data-skin="nocturne"] .icon-btn:hover,
+html[data-skin="nocturne"] .root-chip:hover,
+html[data-skin="nocturne"] .api-chip:hover { background: var(--surface-3) !important; color: var(--ink) !important; }
+html[data-skin="nocturne"] .small-btn.is-strong {
+  background: var(--green-soft) !important; border-color: var(--green) !important; color: var(--green) !important;
+}
+html[data-skin="nocturne"] .main-pane,
+html[data-skin="nocturne"] .file-view,
+html[data-skin="nocturne"] .file-toolbar,
+html[data-skin="nocturne"] .file-subbar,
+html[data-skin="nocturne"] .statusbar { background: var(--surface) !important; }
+
+/* ---------- 预留位提亮（真截图里 .52 太暗，看不清「位置已预留」） ---------- */
+html[data-skin="nocturne"] .tc-view-btn:disabled,
+html[data-skin="nocturne"] .tc-group-btn:disabled { opacity: .82; }
+html[data-skin="nocturne"] .tc-slot-tag,
+html[data-skin="nocturne"] .tc-dock-slot,
+html[data-skin="nocturne"] .tc-seg,
+html[data-skin="nocturne"] .tc-subtab,
+html[data-skin="nocturne"] .tc-light { color: var(--muted) !important; }
+html[data-skin="nocturne"] .tc-seg,
+html[data-skin="nocturne"] .tc-dock-slot { border-color: var(--line-strong); }

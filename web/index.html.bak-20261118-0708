@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>提词器 · 需求库</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2320242b'/%3E%3Cpath d='M9 11h14v14H9z' fill='%23c64f2a'/%3E%3Cpath d='M13 7h14v14' fill='none' stroke='%23e58d63' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/night.css">
+  <link rel="stylesheet" href="/layout-prompt.css">
+  <link rel="stylesheet" href="/skin-nocturne.css">
+  <link rel="stylesheet" href="/skin-cybercore.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2.8 21 7.5v9L12 21.2 3 16.5v-9L12 2.8Z"/><path d="m3.4 7.6 8.6 4.7 8.6-4.7M12 12.3v8.4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-10Z"/></symbol>
+    <symbol id="i-folder-open" viewBox="0 0 24 24"><path d="M3 8V6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2V10"/><path d="M4.3 10h16.2l-2.2 8.2a2 2 0 0 1-1.9 1.5H6.3a2 2 0 0 1-1.9-1.5L2.9 12a2 2 0 0 1 1.4-2Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6.5 3.5h7l4 4v13h-11v-17Z"/><path d="M13.5 3.5v4h4"/></symbol>
+    <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v11M8 10l4-4 4 4M5 19h14"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5l-3 14"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/></symbol>
+    <symbol id="i-braces" viewBox="0 0 24 24"><path d="M9 4H7a2 2 0 0 0-2 2v3.5L3.5 12 5 14.5V18a2 2 0 0 0 2 2h2M15 4h2a2 2 0 0 1 2 2v3.5l1.5 2.5-1.5 2.5V18a2 2 0 0 1-2 2h-2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4.3 4.3"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9L12 3.5Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-.8 5.2"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="i-api" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.3 4.3L19 7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21 20H3L12 3.5Z"/><path d="M12 9v5M12 17.2v.2"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 7h.01M15 7h.01M9 12h.01M15 12h.01M9 17h.01M15 17h.01" stroke-width="2.6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 6.5h15M9 6.5V4h6v2.5M7 6.5l.9 13.5h8.2l.9-13.5M10 10.5v6M14 10.5v6"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="m4 20 4.2-1 10.6-10.6a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.3 6.9 3 3"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 4.7-9 4.7-9-4.7L12 3Z"/><path d="m3 12.2 9 4.7 9-4.7M3 16.8l9 4.7 9-4.7"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6.3c0 4.4-3.3 7.4-8 8.7-4.7-1.3-8-4.3-8-8.7V6l8-3Z"/><path d="m8.5 12 2.3 2.3 4.7-4.8"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m7 9 3.3 3L7 15M13 15h4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8.5 8.5"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6L4.8 10.7 10.3 9 12 3.5Z"/><path d="M19 17.5v3M17.5 19h3"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3.4a1.4 1.4 0 0 1 1.4-1.4h3.2A1.4 1.4 0 0 1 15 3.4v1.1"/><path d="M9 10h6M9 14h6M9 17.5h3.5"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="m12 14 4-4"/><circle cx="12" cy="15" r="1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="提词器">
+        <span class="brand-mark" aria-hidden="true">
+          <span class="brand-cube"></span>
+        </span>
+        <span class="brand-text">
+          <strong>提词器</strong>
+          <small>需求库 · 本地</small>
+        </span>
+      </div>
+
+      <button class="root-chip" id="rootChip" type="button" title="切换文件夹">
+        <svg class="icon"><use href="#i-folder-open"/></svg>
+        <span class="root-chip-text">
+          <span class="root-chip-label">工作区</span>
+          <span class="root-chip-name" id="rootName">读取中…</span>
+        </span>
+        <svg class="icon root-chip-chevron"><use href="#i-chevron-down"/></svg>
+      </button>
+
+      <nav class="top-tabs" aria-label="主导航">
+        <button class="top-tab is-active" id="tabFiles" type="button" data-view="files">
+          <svg class="icon"><use href="#i-folder"/></svg>文件
+        </button>
+        <button class="top-tab" id="tabIndex" type="button" data-view="index">
+          <svg class="icon"><use href="#i-layers"/></svg>功能索引
+        </button>
+        <button class="top-tab" id="tabPrompt" type="button" data-view="prompt">
+          <svg class="icon"><use href="#i-spark"/></svg>提词器
+        </button>
+      </nav>
+
+      <div class="top-actions">
+        <button class="api-chip" id="apiChip" type="button" title="API 接入与状态">
+          <span class="status-dot is-unchecked" id="apiDot"></span>
+          <span id="apiChipText">API 未配置</span>
+        </button>
+        <button class="theme-btn" id="themeBtn" type="button" title="切换白天 / 夜晚模式">
+          <svg class="icon theme-icon-night"><use href="#i-moon"/></svg>
+          <svg class="icon theme-icon-day"><use href="#i-sun"/></svg>
+          <span id="themeBtnText">夜晚</span>
+        </button>
+        <button class="theme-btn rain-tune-btn" id="rainTuneBtn" type="button"
+                aria-expanded="false" aria-controls="rainTune"
+                title="雨夜参数：晃动幅度、窗口模糊、窗口底色、窗外亮度、雨珠大小、雨量（只在夜晚出现）">
+          <svg class="icon"><use href="#i-gauge"/></svg>
+          <span>雨</span>
+        </button>
+        <button class="release-btn" id="releaseBtn" type="button" title="更新公告">
+          <svg class="icon"><use href="#i-spark"/></svg>
+          <span>更新公告</span>
+          <span class="version-pill" id="versionPill">v0.1.0</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="pie-panel" id="piePanel" aria-label="大小占比">
+          <div class="pie-head">
+            <div class="pie-head-copy">
+              <span class="eyebrow">SIZE MAP</span>
+              <h2>大小占比</h2>
+            </div>
+            <span class="pie-flag" id="pieFlag" hidden><span class="pie-flag-dot"></span>有改动</span>
+          </div>
+
+          <div class="pie-modes" id="pieModes" role="group" aria-label="统计范围">
+            <button class="pie-mode is-active" type="button" data-pie-mode="cur">当前</button>
+            <button class="pie-mode" type="button" data-pie-mode="fav">收藏夹</button>
+            <button class="pie-mode" type="button" data-pie-mode="drop" hidden>拖入</button>
+          </div>
+
+          <div class="pie-levels" id="pieLevels" role="group" aria-label="统计起点" hidden></div>
+
+          <div class="pie-stage" id="pieStage">
+            <svg class="pie-svg" id="pieSvg" viewBox="0 0 200 200" role="img" aria-label="文件大小占比环形图"></svg>
+            <div class="pie-center" id="pieCenter"></div>
+          </div>
+
+          <div class="pie-trail" id="pieTrail"></div>
+          <div class="pie-legend" id="pieLegend"></div>
+          <p class="pie-hint" id="pieHint">把文件夹直接拖到这里，看它的大小占比</p>
+        </section>
+
+        <div class="sidebar-heading">
+          <div>
+            <span class="eyebrow">COLLECTIONS</span>
+            <h2>收藏夹</h2>
+          </div>
+          <button class="icon-btn" id="addCategoryBtn" type="button" title="新建分类" aria-label="新建分类">
+            <svg class="icon"><use href="#i-plus"/></svg>
+          </button>
+        </div>
+
+        <div class="favorites-list" id="favoritesList" aria-live="polite"></div>
+
+        <div class="sidebar-note">
+          <svg class="icon"><use href="#i-shield"/></svg>
+          <div>
+            <strong>只读安全模式</strong>
+            <span>不修改项目文件 · 跳过密钥、日志、缓存与构建产物 · 不跟随符号链接</span>
+          </div>
+        </div>
+      </aside>
+
+      <div class="col-grip" data-grip="1" role="separator" aria-orientation="vertical" tabindex="0" title="拖动调整收藏栏宽度"></div>
+
+      <section class="explorer" aria-label="文件浏览">
+        <div class="explorer-head">
+          <div>
+            <span class="eyebrow">WORKSPACE</span>
+            <h2 id="workspaceTitle">文件</h2>
+          </div>
+          <button class="icon-btn" id="rescanBtn" type="button" title="重新扫描" aria-label="重新扫描">
+            <svg class="icon"><use href="#i-refresh"/></svg>
+          </button>
+        </div>
+
+        <div class="search-box" id="searchBox">
+          <svg class="icon search-icon"><use href="#i-search"/></svg>
+          <input id="fileSearch" type="search" placeholder="搜索文件或路径" autocomplete="off" spellcheck="false" aria-label="搜索文件或路径">
+          <kbd class="search-kbd">⌘K</kbd>
+          <button class="search-clear" id="searchClear" type="button" aria-label="清除搜索" hidden>
+            <svg class="icon"><use href="#i-close"/></svg>
+          </button>
+        </div>
+
+        <div class="filter-row" id="filterRow" role="group" aria-label="文件筛选">
+          <button class="filter-chip is-active" type="button" data-kind="all">全部</button>
+          <button class="filter-chip" type="button" data-kind="code">代码</button>
+          <button class="filter-chip" type="button" data-kind="docs">文档</button>
+          <button class="filter-chip" type="button" data-kind="config">配置</button>
+          <button class="filter-chip" type="button" data-kind="other">其他</button>
+          <span class="filter-spacer"></span>
+          <button class="filter-chip filter-icon" id="newFilterBtn" type="button" title="只看新增文件" aria-label="只看新增文件">
+            <span class="new-dot"></span>新增
+          </button>
+          <button class="filter-chip filter-icon" id="favFilterBtn" type="button" title="只看已收藏" aria-label="只看已收藏">
+            <svg class="icon"><use href="#i-star"/></svg>
+          </button>
+        </div>
+
+        <div class="scope-bar" id="scopeBar" hidden>
+          <svg class="icon"><use href="#i-folder-open"/></svg>
+          <span class="scope-label">目录</span>
+          <span class="scope-path" id="scopePath"></span>
+          <button class="scope-clear" id="scopeClear" type="button" aria-label="清除目录筛选">
+            <svg class="icon"><use href="#i-close"/></svg>
+          </button>
+        </div>
+
+        <div class="tree-scroll" id="treeScroll">
+          <div class="file-tree" id="fileTree"></div>
+          <div class="tree-empty" id="treeEmpty" hidden>
+            <svg class="icon"><use href="#i-search"/></svg>
+            <p>没有匹配的文件</p>
+            <button class="text-btn" id="clearFiltersBtn" type="button">清除筛选</button>
+          </div>
+          <div class="tree-loading" id="treeLoading">
+            <span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span>
+          </div>
+        </div>
+
+        <div class="explorer-foot">
+          <button class="new-jump" id="newJump" type="button" hidden>
+            <span class="new-dot"></span><span id="newJumpText">0 个新增</span>
+            <svg class="icon"><use href="#i-chevron"/></svg>
+          </button>
+          <span class="explorer-count" id="explorerCount">—</span>
+        </div>
+      </section>
+
+      <div class="col-grip" data-grip="2" role="separator" aria-orientation="vertical" tabindex="0" title="拖动调整文件栏宽度"></div>
+
+      <main class="main-pane" id="mainPane">
+        <section class="welcome" id="welcome">
+          <div class="welcome-grid">
+            <div class="welcome-copy">
+              <div class="welcome-badge"><span class="new-dot"></span> 本地运行 · 文件不出电脑</div>
+              <h1>把项目，<br><em>摊开来看。</em></h1>
+              <p class="welcome-lead">只读打开任意文件夹，在浏览器里读代码。收藏、检索、功能索引、引用自检与 API 状态，都放在同一张工作台上。</p>
+              <div class="welcome-actions">
+                <button class="primary-btn" id="openFolderBtn" type="button">
+                  <svg class="icon"><use href="#i-folder-open"/></svg>打开文件夹
+                </button>
+                <button class="ghost-btn" id="welcomeIndexBtn" type="button">
+                  <svg class="icon"><use href="#i-layers"/></svg>看看功能索引
+                </button>
+              </div>
+              <p class="welcome-hint">快捷键 <kbd>⌘K</kbd> 搜索文件，<kbd>⌘B</kbd> 聚焦收藏夹</p>
+            </div>
+
+            <div class="welcome-board" aria-hidden="true">
+              <div class="board-window">
+                <div class="board-bar"><span></span><span></span><span></span><em>command-block / mirror</em></div>
+                <div class="board-body">
+                  <div class="board-side">
+                    <span class="board-line short"></span><span class="board-line"></span><span class="board-line"></span>
+                    <span class="board-line active"></span><span class="board-line short"></span>
+                  </div>
+                  <div class="board-code">
+                    <span class="c1">const</span> <span class="c2">mirror</span> = <span class="c3">readOnly</span>(<span class="c4">folder</span>)<span class="p">;</span><br>
+                    <span class="c1">await</span> <span class="c2">mirror</span>.<span class="c3">sync</span>()<span class="p">;</span><br><br>
+                    <span class="c5">// 收藏、检索、索引</span><br>
+                    <span class="c5">// 全部在一个页面里</span><br>
+                    <span class="c1">return</span> <span class="c4">clarity</span><span class="p">;</span>
+                  </div>
+                </div>
+              </div>
+              <div class="board-card card-a"><svg class="icon"><use href="#i-layers"/></svg><span><strong id="welcomeFiles">—</strong><small>可见文件</small></span></div>
+              <div class="board-card card-b"><svg class="icon"><use href="#i-shield"/></svg><span><strong>只读</strong><small>零写入</small></span></div>
+              <div class="board-cube"><span></span></div>
+            </div>
+          </div>
+
+          <div class="welcome-features">
+            <article><span class="feature-no">01</span><svg class="icon"><use href="#i-folder-open"/></svg><h3>读取与查看</h3><p>指向文件夹即可浏览，语法高亮、行号与新增文件提示随扫描同步。</p></article>
+            <article><span class="feature-no">02</span><svg class="icon"><use href="#i-star"/></svg><h3>可拖动收藏夹</h3><p>文件和文件夹都能拖进分类，分类与条目均可重新排序。</p></article>
+            <article><span class="feature-no">03</span><svg class="icon"><use href="#i-layers"/></svg><h3>功能索引</h3><p>自动提取函数、类与 Markdown 小节，点击即可跳到源代码行。</p></article>
+            <article><span class="feature-no">04</span><svg class="icon"><use href="#i-api"/></svg><h3>API 监测</h3><p>本机保存密钥，连接状态、延迟与模型可用性一目了然。</p></article>
+          </div>
+
+          <div class="welcome-foot">
+            <span>v<span id="welcomeVersion">0.1.0</span> 本轮范围：读取 / 收藏夹 / API 入口 / 功能索引</span>
+            <span>不含 AI 注解、Bug 检测、迁移执行</span>
+          </div>
+        </section>
+
+        <section class="file-view" id="fileView" hidden>
+          <div class="file-toolbar">
+            <div class="breadcrumbs" id="fileCrumbs"></div>
+            <div class="file-actions">
+              <button class="subtle-btn" id="favFileBtn" type="button">
+                <svg class="icon"><use href="#i-star"/></svg><span>收藏</span>
+              </button>
+              <button class="subtle-btn" id="reloadFileBtn" type="button" title="重新读取当前文件">
+                <svg class="icon"><use href="#i-refresh"/></svg><span>刷新</span>
+              </button>
+            </div>
+          </div>
+          <div class="file-subbar">
+            <span class="lang-pill" id="fileLang">CODE</span>
+            <span id="fileMeta">—</span>
+            <span class="readonly-pill"><svg class="icon"><use href="#i-shield"/></svg>只读</span>
+            <span class="file-fullpath" id="filePath"></span>
+          </div>
+          <div class="file-notice" id="fileNotice" hidden></div>
+          <div class="note-strip" id="noteStrip">
+            <span class="note-badge" id="noteBadge">用途</span>
+            <div class="note-body">
+              <p class="note-text" id="noteText">还没有写这个文件是干什么的</p>
+            </div>
+            <button class="subtle-btn note-edit" id="noteEditBtn" type="button">
+              <svg class="icon"><use href="#i-pencil"/></svg><span>写说明</span>
+            </button>
+          </div>
+          <div class="code-wrap" id="codeWrap">
+            <div class="code-scroll" id="codeScroll">
+              <div class="code-lines" id="codeLines"></div>
+            </div>
+          </div>
+          <div class="file-loading" id="fileLoading" hidden>
+            <span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line short"></span>
+          </div>
+        </section>
+
+        <section class="folder-view" id="folderView" hidden>
+          <div class="folder-head">
+            <div class="folder-icon"><svg class="icon"><use href="#i-folder-open"/></svg></div>
+            <div class="folder-head-copy">
+              <span class="eyebrow">FOLDER</span>
+              <h1 id="folderTitle">文件夹</h1>
+              <p id="folderMeta">—</p>
+            </div>
+            <button class="ghost-btn" id="folderScopeBtn" type="button">
+              <svg class="icon"><use href="#i-search"/></svg>在文件栏筛选
+            </button>
+          </div>
+          <div class="folder-list" id="folderList"></div>
+        </section>
+
+        <section class="index-view" id="indexView" hidden>
+          <div class="index-head">
+            <div>
+              <span class="eyebrow">FEATURE INDEX</span>
+              <h1>当前功能汇总</h1>
+              <p>从可见代码中提取函数、类与 Markdown 小节。点击任意条目，直接跳到只读文件中的对应行。</p>
+            </div>
+            <button class="ghost-btn" id="indexRefreshBtn" type="button">
+              <svg class="icon"><use href="#i-refresh"/></svg>重建索引
+            </button>
+          </div>
+          <div class="index-stats" id="indexStats"></div>
+          <div class="index-toolbar">
+            <div class="search-box index-search">
+              <svg class="icon search-icon"><use href="#i-search"/></svg>
+              <input id="indexSearch" type="search" placeholder="搜索函数、类或文件" autocomplete="off" spellcheck="false" aria-label="搜索功能">
+            </div>
+            <div class="filter-row" id="indexKinds" role="group" aria-label="功能类型筛选">
+              <button class="filter-chip is-active" type="button" data-symbol-kind="all">全部</button>
+              <button class="filter-chip" type="button" data-symbol-kind="function">函数</button>
+              <button class="filter-chip" type="button" data-symbol-kind="class">类</button>
+              <button class="filter-chip" type="button" data-symbol-kind="method">方法</button>
+              <button class="filter-chip" type="button" data-symbol-kind="section">文档</button>
+            </div>
+          </div>
+          <div class="index-loading" id="indexLoading" hidden>
+            <span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span>
+          </div>
+          <div class="index-body" id="indexBody">
+            <section class="symbol-panel">
+              <div class="panel-heading"><h2>函数与类</h2><span id="symbolCount">—</span></div>
+              <div class="symbol-list" id="symbolList"></div>
+              <div class="index-empty" id="symbolEmpty" hidden>没有匹配的功能条目</div>
+            </section>
+            <aside class="refs-panel">
+              <div class="panel-heading"><h2>本地引用自检</h2><span id="refCount">—</span></div>
+              <p class="refs-note">仅检查相对 <code>import</code> / <code>require</code> 指向的本地文件，不读取依赖包，也不做全项目缺失文件扫描。</p>
+              <div class="ref-summary" id="refSummary"></div>
+              <div class="missing-list" id="missingList"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="prompt-view" id="promptView" hidden>
+          <!-- 提词器自有顶栏：三视图、皮肤、白天/夜晚、状态灯。
+               星图/文件夹与三个状态灯是固定预留位，disabled 且标「未开放」。 -->
+          <header class="tc-topbar" id="tcTopbar">
+            <div class="tc-brand"><strong>提词器</strong><small>需求库 · v2.8</small></div>
+            <nav class="tc-views" id="tcViews" aria-label="三视图（三个平级主视图）">
+              <button class="tc-view-btn" type="button" data-tc-mainview-btn="text" aria-pressed="false">文字</button>
+              <button class="tc-view-btn" type="button" data-tc-mainview-btn="star" aria-pressed="false">星图</button>
+              <button class="tc-view-btn" type="button" data-tc-mainview-btn="folder" aria-pressed="false">文件夹</button>
+            </nav>
+            <span class="tc-topbar-spacer"></span>
+            <div class="tc-lights tc-slot" id="tcLights">
+              <span class="tc-light"><i></i>文件监听</span>
+              <span class="tc-light"><i></i>读取报告</span>
+              <span class="tc-light"><i></i>同步待办</span>
+            </div>
+            <div class="tc-topbar-actions">
+              <button class="tc-btn tc-slot" id="tcSlotsBtn" type="button" title="显示 / 隐藏所有预留位置">功能位</button>
+              <button class="tc-btn" id="tcThemeBtn" type="button" title="切换白天 / 夜晚">白天 / 夜晚</button>
+              <button class="tc-btn" id="tcSkinBtn" type="button" title="切换皮肤">皮肤</button>
+            </div>
+          </header>
+
+          <!-- 三个平级主视图：文字 / 星图 / 文件夹，一次只显示一个 -->
+          <div class="tc-mainview-pane" data-tc-mainview-pane="text">
+
+          <header class="prompt-head">
+            <div class="prompt-head-copy">
+              <span class="eyebrow">PROMPTER</span>
+              <h1>提词器</h1>
+              <p>把要发给 AI 的需求先存在这里，用本地规则体检一遍，再连同原文一起复制出去。分数只反映「写得够不够具体」，不代表 AI 会怎么做。</p>
+              <!-- 父级 / 同级 / 子级 就地切换（逐字原文 61 行）：任意视图选中一条后显示，点即从同一位置切走 -->
+              <nav class="tc-context-nav" id="tcContextNav" aria-label="父级同级子级切换" hidden>
+                <button class="tc-ctx-btn" type="button" data-ctx="parent" title="切到父级">↑ 父级</button>
+                <span class="tc-ctx-current" id="tcCtxCurrent">当前</span>
+                <button class="tc-ctx-btn" type="button" data-ctx="sibling-prev" title="上一个同级">‹ 同级</button>
+                <button class="tc-ctx-btn" type="button" data-ctx="sibling-next" title="下一个同级">同级 ›</button>
+                <button class="tc-ctx-btn" type="button" data-ctx="child" title="切到子级">↓ 子级</button>
+                <span class="tc-ctx-sep"></span>
+                <button class="tc-ctx-btn tc-ctx-view" type="button" data-ctx-view="star" title="回星图">星图</button>
+                <button class="tc-ctx-btn tc-ctx-view" type="button" data-ctx-view="folder" title="切文件夹视图">文件夹</button>
+              </nav>
+            </div>
+            <!-- 主人 2026-11-18：操作按钮全部移到左侧常驻工作台（见 .prompt-list-panel 顶部），
+                 header 只留标题与父/同级/子级导航，避免五个按钮堆在头部不符合人类习惯。 -->
+          </header>
+
+          <!-- 项目大分区导航（主人 2026-11-18：主页面第一屏就能按项目看规则，不用点进弹层）。
+               单看 / 多选合并看 / 看全部，点击直接筛已完成区规则；接线在 /js/records.js 的 mountMainProjectNav。 -->
+          <nav class="tc-mainprojnav" id="tcMainProjNav" aria-label="项目大分区">
+            <span class="tc-mainprojnav-label">项目分区</span>
+            <span class="tc-mainprojnav-hint">单看 / 多选合并 / 看全部 · 点项目查看该项目的规则</span>
+          </nav>
+
+          <!-- 三大类分组：待办区 / 已完成区（三子标签）/ 失效区。后两组是预留位。 -->
+          <nav class="tc-groups" id="tcGroups" aria-label="需求三大类">
+            <span class="tc-groups-label">分组</span>
+            <button class="tc-group-btn is-active" type="button" data-tc-group="todo">待办区</button>
+            <button class="tc-group-btn" type="button" data-tc-group="done" id="tcDoneBtn" title="已完成区：列出 AI 每轮同步的三字段记录（我记的 / 她原话 / 对应文件哪几行）">已完成区</button>
+            <div class="tc-subtabs tc-slot" id="tcSubtabs" title="已完成区的三个子标签页：已完成 / AI转正 / AI新增">
+              <span class="tc-subtab">已完成</span><span class="tc-subtab">AI转正</span><span class="tc-subtab">AI新增</span>
+            </div>
+            <button class="tc-group-btn tc-slot" type="button" data-tc-group="invalid" disabled title="失效区：位置已预留，功能未做">失效区<span class="tc-slot-tag"> · 未开放</span></button>
+            <div class="tc-groups-tools">
+              <span class="tc-switch tc-slot" title="含失效开关：控制失效子节点是否参与聚合"><i></i>含失效</span>
+              <span class="tc-switch tc-slot" title="聚合状态：待办 / 半完成 / 已完成 / 失效"><i></i>聚合状态</span>
+            </div>
+          </nav>
+
+
+          <div class="prompt-pending" id="promptPending" hidden></div>
+
+          <div class="prompt-body">
+            <aside class="prompt-list-panel">
+              <!-- 常驻工作台主操作（主人 2026-11-18：从 header 移来，按操作环节就近固定） -->
+              <div class="tc-workbench" id="tcWorkbench">
+                <button class="primary-btn" id="promptNewBtn" type="button">
+                  <svg class="icon"><use href="#i-plus"/></svg>新建需求
+                </button>
+                <button class="ghost-btn" id="promptCaptureBtn" type="button">
+                  <svg class="icon"><use href="#i-clip"/></svg><span id="promptCaptureText">剪贴板同步</span>
+                </button>
+                <button class="ghost-btn" id="promptImportBtn" type="button" title="从 txt / md 文件批量导入需求">
+                  <svg class="icon"><use href="#i-import"/></svg><span>导入需求</span>
+                </button>
+                <input type="file" id="promptImportFile" accept=".txt,.md,text/plain" hidden>
+                <div class="tc-workbench-sub">
+                  <button class="ghost-btn" id="ctodoEntryBtn" type="button" title="打开 C_TODO：项目 / 需求树 / 状态流转">
+                    <svg class="icon"><use href="#i-layers"/></svg><span>项目需求</span>
+                  </button>
+                  <button class="ghost-btn" id="issueEntryBtn" type="button">
+                    <span>遗留问题</span><span class="issue-badge" id="issueBadge">0</span>
+                  </button>
+                </div>
+              </div>
+              <div class="search-box prompt-search">
+                <svg class="icon search-icon"><use href="#i-search"/></svg>
+                <input id="promptSearch" type="search" placeholder="搜索需求" autocomplete="off" spellcheck="false" aria-label="搜索需求">
+              </div>
+              <!-- 六段结构：应用场景 / 背景 / 前端 / 后端 / 数据来源 / 前端排版。
+                   位置固定在这里，功能（按段归类需求）尚未做。 -->
+              <div class="tc-segments tc-slot" id="tcSegments">
+                <div class="tc-segments-head">六段结构 · 位置已预留</div>
+                <span class="tc-seg">应用场景</span><span class="tc-seg">背景</span>
+                <span class="tc-seg">前端</span><span class="tc-seg">后端</span>
+                <span class="tc-seg">数据来源</span><span class="tc-seg">前端排版</span>
+                <div class="tc-seg-note">需求归段 / 搜索优先标题：功能未做，仅固定位置</div>
+              </div>
+              <div class="prompt-list" id="promptList"></div>
+              <div class="tc-oversize tc-slot" id="tcOversize" title="单文件超 7000 token 时整列标红提醒">文件超 7000 token 标红位 · 未开放</div>
+            </aside>
+            <section class="prompt-detail" id="promptDetail"></section>
+          </div>
+
+          <!-- 详情下方操作槽：手动完成 / 确认转正 / 重新打开 / 归档恢复 / 完成历史。
+               放在 prompt-body 之外，避免被 renderPromptDetail() 的 innerHTML 覆盖。 -->
+          <div class="tc-detail-slots tc-slot" id="tcDetailSlots">
+            <span class="tc-groups-label">详情操作 · 位置已预留</span>
+            <span class="tc-dock-slot">手动完成</span>
+            <span class="tc-dock-slot">确认转正</span>
+            <span class="tc-dock-slot">重新打开</span>
+            <span class="tc-dock-slot">归档 / 恢复</span>
+            <span class="tc-dock-slot">完成历史区</span>
+            <span class="tc-dock-slot">状态流转</span>
+          </div>
+
+          <!-- 底栏 dock：跨模块的固定预留位 -->
+          <footer class="tc-dock" id="tcDock">
+            <span class="tc-dock-label">固定位</span>
+            <span class="tc-dock-slot tc-slot" title="spec_05 同步待办 / C_TODO.md 三区">同步待办</span>
+            <span class="tc-dock-slot tc-slot" title="spec_07 读取报告四栏">读取报告</span>
+            <span class="tc-dock-slot tc-slot" title="spec_06 文件监听">文件监听</span>
+            <span class="tc-dock-slot tc-slot" title="spec_14 插件层">插件</span>
+            <span class="tc-dock-slot tc-slot" title="spec_15 多项目">多项目</span>
+            <span class="tc-dock-slot tc-slot" title="projectSnapshots 版本快照">版本快照</span>
+            <button class="tc-dock-slot is-live" id="tcAccessRuleBtn" type="button" title="查看并复制提词器接入规则（给 AI 的长期记忆层）">接入规则</button>
+            <button class="tc-dock-slot is-live" id="tcExportBtn" type="button" title="把本轮需求按读取优先度导出（已可用）">生成本轮需求</button>
+            <span class="tc-dock-ver">ticiqi v1.0.0 · 位置固定，运行时不自动排版</span>
+          </footer>
+
+          </div><!-- /文字主视图 -->
+
+          <!-- 星图主视图：选星星（逐字原文 59/61 行）。需求=星星，外部看标题；点星星展开预览，预览里才显示文件/文件夹；再点进文字详情。 -->
+          <div class="tc-mainview-pane" data-tc-mainview-pane="star" hidden>
+            <div class="star-toolbar">
+              <span class="star-title">星图 · 选星星</span>
+              <span class="star-hint">外部看标题 · 点星星展开预览 · 拖动移动 · 滚轮缩放 · 双击空白适应</span>
+              <span class="star-tools">
+                <button class="tc-btn" id="starZoomOut" type="button" title="缩小">−</button>
+                <span class="star-zoom-text" id="starZoomText">100%</span>
+                <button class="tc-btn" id="starZoomIn" type="button" title="放大">＋</button>
+                <button class="tc-btn" id="starFit" type="button" title="适应所有星星">适应</button>
+              </span>
+            </div>
+            <div class="star-stage" id="starStage">
+              <div class="star-sky" id="starSky" aria-hidden="true"></div>
+              <div class="star-world" id="starWorld">
+                <svg class="star-links" id="starLinks" aria-hidden="true"></svg>
+                <div class="star-cards" id="starCards"></div>
+              </div>
+              <!-- 展开预览：逐字原文 61 行——星图模式只有展开预览才显示文件/文件夹 -->
+              <div class="star-preview" id="starPreview" hidden role="dialog" aria-label="星星预览">
+                <div class="star-preview-head">
+                  <span class="star-preview-cat" id="spCat"></span>
+                  <button class="tc-btn" id="spClose" type="button" title="收起预览">✕</button>
+                </div>
+                <h3 class="star-preview-title" id="spTitle"></h3>
+                <p class="star-preview-text" id="spText"></p>
+                <div class="star-preview-files" id="spFiles"></div>
+                <div class="star-preview-foot">
+                  <button class="primary-btn" id="spOpenText" type="button">展开为文字详情 →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 文件夹主视图：需求按 category → segment 映射成树；命令方块的文件树不在此重复实现。 -->
+          <div class="tc-mainview-pane" data-tc-mainview-pane="folder" hidden>
+            <div class="folder-req-head">
+              <span class="star-title">文件夹 · 需求树</span>
+              <span class="star-hint">按分类 → 六段归位；点某条打开详情</span>
+              <span class="star-tools">
+                <button class="tc-btn" type="button" data-tc-mainview-btn="star" title="回星图">星图</button>
+                <button class="tc-btn" type="button" data-tc-mainview-btn="text" title="回文字">文字</button>
+              </span>
+            </div>
+            <div class="folder-req-tree" id="folderReqTree"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <footer class="statusbar">
+      <div class="status-left">
+        <span class="sync-status" id="syncStatus"><span class="status-dot is-unchecked"></span><span>正在连接…</span></span>
+        <span class="status-sep"></span>
+        <span id="statusCounts">— 文件</span>
+        <span class="status-sep"></span>
+        <span id="statusExcluded">—</span>
+        <button class="status-new" id="statusNew" type="button" hidden><span class="new-dot"></span><span>新增 0</span></button>
+      </div>
+      <div class="status-right">
+        <button class="status-api" id="statusApi" type="button"><span class="status-dot is-unchecked" id="statusApiDot"></span><span id="statusApiText">API 未检测</span></button>
+        <span class="status-sep"></span>
+        <span>提词器 v<span id="statusVersion">1.0.0</span></span>
+      </div>
+    </footer>
+  </div>
+
+  <div class="issue-overlay" id="issueOverlay" hidden>
+    <div class="issue-panel" role="dialog" aria-label="遗留问题">
+      <header class="issue-head">
+        <h2>遗留问题</h2>
+        <span class="issue-note">回答前视为【ai待办】；回答由代码自动记为原始需求，需你确认</span>
+        <button class="ghost-btn" id="issueCloseBtn" type="button">关闭</button>
+      </header>
+      <div class="issue-stats" id="issueStats">—</div>
+      <div class="issue-list" id="issueList"></div>
+      <footer class="issue-foot">
+        <div class="issue-add">
+          <input id="issueNewTitle" type="text" placeholder="新遗留问题标题" autocomplete="off">
+          <input id="issueNewSource" type="text" placeholder="来源（原文件路径）" autocomplete="off">
+          <button class="ghost-btn" id="issueAddBtn" type="button">新增（另开新文件）</button>
+        </div>
+        <div class="issue-actions">
+          <button class="ghost-btn" id="issueExportBtn" type="button">生成本轮需求（按读取优先度）</button>
+          <button class="ghost-btn" id="issueCopyBtn" type="button" hidden>复制</button>
+        </div>
+        <textarea id="issueExportText" readonly hidden></textarea>
+      </footer>
+    </div>
+  </div>
+  <div class="issue-toast" id="issueToast" hidden></div>
+
+  <!-- 已完成区：她 2026-11-09 要求「记了就同步写到提词器」，这里让记录能在客户端里看。
+       复用现成 issue-* 弹层样式，不新建 CSS；接线在 /js/records.js，不碰 app.js。 -->
+  <div class="issue-overlay" id="recordsOverlay" hidden>
+    <div class="issue-panel" role="dialog" aria-label="已完成区">
+      <header class="issue-head">
+        <h2>已完成区</h2>
+        <span class="issue-note">有她原话记三字段，没有就按 AI已完成记两段式；规矩 / 名词 / AI已完成分开列，索引由代码生成</span>
+        <button class="ghost-btn" id="recordsCloseBtn" type="button">关闭</button>
+      </header>
+      <div class="issue-stats" id="recordsStats">—</div>
+      <!-- 项目分区导航（主人 2026-11-18：规则按项目分开记，重叠项目可合并看/单看，可看全部）。
+           项目由每条记录的 files 路径自动推断，无需手写归属；接线在 /js/records.js。 -->
+      <div id="recordsProjects" class="tc-projnav" style="padding:0 16px 8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span class="tc-projnav-label" style="font-size:11px;color:var(--muted,#6E788B);">项目</span>
+        <span class="tc-projnav-loading" style="font-size:11px;color:var(--muted,#6E788B);">读取中…</span>
+      </div>
+      <div id="recordsFilters" style="padding:0 16px 8px;display:flex;gap:8px;">
+        <button class="ghost-btn is-active" type="button" data-kind="all">全部</button>
+        <button class="ghost-btn" type="button" data-kind="rule">规矩</button>
+        <button class="ghost-btn" type="button" data-kind="noun">名词</button>
+        <button class="ghost-btn" type="button" data-kind="ai">AI已完成</button>
+        <button class="ghost-btn" id="recordsRevealBtn" type="button" title="在访达里显示索引文件">在访达里显示</button>
+        <button class="ghost-btn" id="recordsSyncBtn" type="button" title="立刻重新扫描最近日志并同步进已完成区">立即同步</button>
+        <span style="flex:1 1 auto"></span>
+        <input id="recordsCleanupInput" type="text" placeholder="清理 id，如 L0022" aria-label="要清理的条目 id"
+          style="width:128px;padding:4px 8px;border:1px solid var(--line,#d8dee4);border-radius:6px;background:transparent;color:inherit;font-size:13px;" />
+        <button class="ghost-btn" id="recordsCleanupBtn" type="button" title="追加 ai_cleanup 指令，把该条目移出已完成区（不删旧行）">清理</button>
+      </div>
+      <div class="issue-list" id="recordsList"></div>
+      <footer class="issue-foot">
+        <p class="issue-note" id="recordsPath">数据落点：—</p>
+      </footer>
+    </div>
+  </div>
+  <div class="issue-toast" id="recordsToast" hidden></div>
+
+  <!-- 接入规则（主人 2026-11-18：她说过要放面板上供查看、复制；此前只有死的占位 span）。
+       复用 issue-* 弹层样式；接线在 /js/records.js，读 /api/ctodo/access-rule，不另造接口。 -->
+  <div class="issue-overlay" id="accessRuleOverlay" hidden>
+    <div class="issue-panel" role="dialog" aria-label="接入规则">
+      <header class="issue-head">
+        <h2>接入规则</h2>
+        <span class="issue-note">给 AI 的长期记忆层；写入 CLAUDE.md / AGENTS.md 后新会话自动加载，规则变更才重贴</span>
+        <button class="ghost-btn" id="accessRuleCopyBtn" type="button" title="复制全文">复制全文</button>
+        <button class="ghost-btn" id="accessRuleCloseBtn" type="button">关闭</button>
+      </header>
+      <pre id="accessRuleText" style="white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow:auto;padding:12px 16px;margin:0;font-size:13px;line-height:1.7;">加载中…</pre>
+    </div>
+  </div>
+  <div class="issue-toast" id="accessRuleToast" hidden></div>
+
+  <!-- C_TODO 统一需求内核：项目 / 任意深度树 / 三区分组 / 状态流转 / 同步待办。
+       独立脚本 /js/ctodo.js 接线，不碰 app.js；复用 issue-* 样式。数据落 SQLite + .ticiqi/C_TODO.md。 -->
+  <div class="issue-overlay" id="ctodoOverlay" hidden>
+    <div class="issue-panel ctodo-panel" role="dialog" aria-label="C_TODO 需求">
+      <header class="issue-head">
+        <h2>C_TODO 需求</h2>
+        <span class="issue-note">项目 → 节点树 → 需求；三区分组；状态流转事务性；同步待办生成 C_TODO.md</span>
+        <button class="ghost-btn" id="ctodoCloseBtn" type="button">关闭</button>
+      </header>
+      <div class="ctodo-projbar" id="ctodoProjbar">
+        <label>项目 <select id="ctodoProject" aria-label="当前项目"></select></label>
+        <button class="ghost-btn" id="ctodoProjNewBtn" type="button" title="新建项目">+ 项目</button>
+        <button class="ghost-btn" id="ctodoProjRenameBtn" type="button" title="重命名当前项目">改名</button>
+        <button class="ghost-btn ctodo-danger" id="ctodoProjDeleteBtn" type="button" title="删除当前项目（软删，可在恢复区找回，数据不丢）">删项目</button>
+        <label class="ctodo-restore-wrap" id="ctodoRestoreWrap" hidden>恢复 <select id="ctodoRestoreSel" aria-label="恢复已删项目"><option value="">（无已删项目）</option></select></label>
+        <button class="ghost-btn" id="ctodoNodeAddBtn" type="button" title="在选中节点下新增子节点">+ 节点</button>
+        <button class="ghost-btn" id="ctodoReqAddBtn" type="button" title="在选中节点下新增需求">+ 需求</button>
+        <span class="ctodo-projbar-spacer"></span>
+        <button class="ghost-btn" id="ctodoSyncBtn" type="button" title="生成 C_TODO.md 三区（用户待办 / AI待办 / 待修复）">同步待办</button>
+        <button class="ghost-btn" id="ctodoShowTodoBtn" type="button" title="查看已生成的 C_TODO.md">看 C_TODO.md</button>
+      </div>
+      <div class="issue-stats" id="ctodoStats">读取中…</div>
+      <div class="ctodo-body">
+        <div class="ctodo-tree" id="ctodoTree" aria-label="需求树"></div>
+        <div class="ctodo-reqlist" id="ctodoReqList" aria-label="选中节点的需求">
+          <p class="issue-empty">点左侧节点查看需求；点「+ 需求」新增。</p>
+        </div>
+      </div>
+      <div class="ctodo-todo" id="ctodoTodo" hidden>
+        <div class="ctodo-todo-head">
+          <strong>C_TODO.md 预览</strong>
+          <button class="ghost-btn" id="ctodoTodoCloseBtn" type="button">收起</button>
+        </div>
+        <pre id="ctodoTodoText"></pre>
+      </div>
+      <footer class="issue-foot">
+        <p class="issue-note" id="ctodoHint">数据：SQLite（&lt;dataDir&gt;/ctodo.db） · 文件层：.ticiqi/C_TODO.md · 全部由代码生成，勿手改</p>
+      </footer>
+    </div>
+  </div>
+  <div class="issue-toast" id="ctodoToast" hidden></div>
+
+  <div class="skin-overlay" id="skinOverlay" hidden>
+    <div class="skin-panel" role="dialog" aria-label="皮肤">
+      <div class="skin-panel-head">
+        <h2>皮肤</h2>
+        <button class="ghost-btn" id="skinCloseBtn" type="button">关闭</button>
+      </div>
+      <p class="skin-panel-note">只换外观，不换功能；和白天 / 夜晚并列，随时能切回原样。选择记在本机，下次打开还是这一套。</p>
+      <div class="skin-options" id="skinOptions">
+        <button class="skin-option" type="button" data-skin="none">
+          <span class="skin-swatch s-none"></span>
+          <span class="skin-option-copy"><strong>原样</strong><span>回到原本的白天 / 夜晚，不套任何皮肤</span></span>
+          <span class="skin-check">当前 ✓</span>
+        </button>
+        <button class="skin-option" type="button" data-skin="nocturne">
+          <span class="skin-swatch s-nocturne"></span>
+          <span class="skin-option-copy"><strong>深霓虹</strong><span>近黑底 + 青/品红单霓虹 + 斜切角 + 边框发光；8 组动画，克制不刺眼</span></span>
+          <span class="skin-check">当前 ✓</span>
+        </button>
+        <button class="skin-option" type="button" data-skin="cybercore">
+          <span class="skin-swatch s-cybercore"></span>
+          <span class="skin-option-copy"><strong>赛博炫光</strong><span>在深霓虹上再叠扫描线、故障抖动、噪点、网格流动等 10 组特效；最炫</span></span>
+          <span class="skin-check">当前 ✓</span>
+        </button>
+      </div>
+      <div class="skin-panel-foot">
+        <span>原样 = 白天 / 夜晚照旧；套皮肤后由皮肤决定配色。</span>
+        <button class="tc-btn" id="skinSlotsBtn" type="button">显示 / 隐藏功能位</button>
+      </div>
+    </div>
+  </div>
+  <!-- 雨夜调参面板：由 rain-night.js 接线。删掉本节点 + #rainTuneBtn = 回滚到固定参数。 -->
+  <div class="rain-tune" id="rainTune" role="dialog" aria-label="雨夜参数">
+    <div class="rain-tune__head">
+      <span class="rain-tune__title">雨夜</span>
+      <span class="rain-tune__hint">拖动即时生效 · 仅夜晚可见</span>
+    </div>
+    <div class="rain-tune__row">
+      <div class="rain-tune__line"><span class="rain-tune__name">晃动幅度</span><span class="rain-tune__val" id="rtShiftVal">80 px</span></div>
+      <input type="range" id="rtShift" min="0" max="120" step="1" value="80" aria-label="晃动幅度">
+    </div>
+    <div class="rain-tune__row">
+      <div class="rain-tune__line"><span class="rain-tune__name">窗口模糊</span><span class="rain-tune__val" id="rtBlurVal">8 px</span></div>
+      <input type="range" id="rtBlur" min="0" max="20" step="1" value="8" aria-label="窗口模糊">
+    </div>
+    <div class="rain-tune__row">
+      <div class="rain-tune__line"><span class="rain-tune__name">窗口底色</span><span class="rain-tune__val" id="rtAlphaVal">26 %</span></div>
+      <input type="range" id="rtAlpha" min="0" max="90" step="1" value="26" aria-label="窗口底色不透明度">
+    </div>
+    <div class="rain-tune__row">
+      <div class="rain-tune__line"><span class="rain-tune__name">窗外亮度</span><span class="rain-tune__val" id="rtLumVal">50 %</span></div>
+      <input type="range" id="rtLum" min="10" max="100" step="1" value="50" aria-label="窗外亮度">
+    </div>
+    <div class="rain-tune__row">
+      <div class="rain-tune__line"><span class="rain-tune__name">雨珠大小</span><span class="rain-tune__val" id="rtDropVal">45 px</span></div>
+      <input type="range" id="rtDrop" min="20" max="140" step="1" value="45" aria-label="雨珠大小">
+    </div>
+    <div class="rain-tune__row">
+      <div class="rain-tune__line"><span class="rain-tune__name">雨量</span><span class="rain-tune__val" id="rtFlowVal">240</span></div>
+      <input type="range" id="rtFlow" min="40" max="600" step="10" value="240" aria-label="雨量">
+    </div>
+    <div class="rain-tune__row">
+      <div class="rain-tune__line"><span class="rain-tune__name">随机变化</span><span class="rain-tune__val" id="rtRandVal">开</span></div>
+      <button class="rain-tune__toggle" id="rtRand" type="button" aria-pressed="true">雨珠大小 / 雨量 / 模糊 / 高光 自动起伏</button>
+    </div>
+    <div class="rain-tune__foot">
+      <button class="rain-tune__btn" id="rtReset" type="button">恢复默认</button>
+      <button class="rain-tune__btn rain-tune__btn--close" id="rtClose" type="button">关掉</button>
+    </div>
+  </div>
+
+  <div class="tc-toast" id="tcToast" hidden></div>
+
+  <div class="modal-layer" id="modalLayer" hidden></div>
+  <div class="toast-layer" id="toastLayer" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="/js/boot.js"></script>
+  <script type="module" src="/js/app.js"></script>
+  <script src="/js/views.js"></script>
+  <link rel="stylesheet" href="/views.css">
+  <script src="/js/effects.js"></script>
+  <script src="/js/issues.js"></script>
+  <script src="/js/records.js"></script>
+  <script src="/js/ctodo.js"></script>
+  <script src="/js/skin.js"></script>
+  <!-- 雨夜玻璃：第三方库本体 + 项目接线。删掉这两行即整体回滚到纯夜晚界面。 -->
+  <script src="/js/raindrop-fx.js"></script>
+  <script src="/js/rain-night.js"></script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+'use strict';
+/**
+ * 【已完成区】· 界面层
+ *
+ * 这是干什么的：点分组栏的「已完成区」按钮，列出 AI 每轮同步进来的记录。
+ * 有她原话 → 三字段（我记的 / 她原话 / 对应文件哪几行）；没有她原话 → 「AI已完成」两段式
+ * （我记的 / 对应文件哪几行），她 2026-11-09 定。可按规矩 / 名词 / AI已完成过滤，能在访达里打开数据文件。
+ * 她「只认客户端」：数据必须在这里能看，不能只躺在文件里。
+ *
+ * 沿用 issues.js 的独立脚本写法与现成 issue-* 样式，不碰 app.js、不新建 CSS。
+ * CSP 是 script-src 'self'，所以必须是同源外部脚本，内联脚本不执行。
+ */
+(function () {
+  var KIND = { rule: '规矩', noun: '名词', ai: 'AI已完成' };
+  var filter = 'all';
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  var toastTimer = null;
+  function toast(msg) {
+    var el = $('recordsToast');
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.hidden = true; }, 3200);
+    el.onclick = function () { el.hidden = true; };
+  }
+
+  function render(data) {
+    var stats = $('recordsStats');
+    if (stats) stats.textContent = '共 ' + data.total + ' 条 · 规矩 ' +
+      (data.counts.rule || 0) + ' · 名词 ' + (data.counts.noun || 0) +
+      ' · AI已完成 ' + (data.counts.ai || 0);
+    var pathEl = $('recordsPath');
+    if (pathEl) pathEl.textContent = '数据落点：' + (data.jsonl || '') +
+      '（索引与详情由代码生成，勿手改）';
+    var list = $('recordsList');
+    if (!list) return;
+    var items = (data.items || []).filter(function (it) {
+      return filter === 'all' || it.kind === filter;
+    });
+    if (!items.length) { list.innerHTML = '<p class="issue-empty">暂无记录。</p>'; return; }
+    list.innerHTML = items.map(function (it) {
+      return '<article class="issue-card">' +
+        '<header class="issue-card-head">' +
+          '<span class="issue-id">' + esc(it.id) + '</span>' +
+          '<span class="issue-status">' + esc(KIND[it.kind] || it.kind) + ' · ' + esc(it.time) + '</span>' +
+        '</header>' +
+        '<h3>' + esc(it.summary) + '</h3>' +
+        '<p class="issue-source"><strong>我记的：</strong>' + esc(it.mine) + '</p>' +
+        (it.shape === 'two' || !it.quote ? '' :
+          '<p class="issue-source"><strong>她原话：</strong>' + esc(it.quote) + '</p>') +
+        '<p class="issue-files"><strong>对应文件（哪几行）：</strong>' +
+          esc((it.evidence || []).join('、') || '（无）') + '</p>' +
+        '<p class="issue-note">详情：' + esc(it.detailFile) + ' · ' + esc(it.reason) + '</p>' +
+      '</article>';
+    }).join('');
+  }
+
+  function reload() {
+    return fetch('/api/records').then(function (r) { return r.json(); }).then(render);
+  }
+
+  function ready(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
+    else fn();
+  }
+
+  ready(function () {
+    var btn = $('tcDoneBtn');
+    var overlay = $('recordsOverlay');
+    if (!btn || !overlay) return;
+
+    btn.addEventListener('click', function () {
+      overlay.hidden = false;
+      reload().catch(function () { toast('读不到已完成区索引'); });
+    });
+    var close = $('recordsCloseBtn');
+    if (close) close.addEventListener('click', function () { overlay.hidden = true; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.hidden = true;
+    });
+
+    var filters = $('recordsFilters');
+    if (filters) filters.addEventListener('click', function (e) {
+      var target = e.target.closest('[data-kind]');
+      if (!target) return;
+      filter = target.getAttribute('data-kind');
+      Array.prototype.forEach.call(filters.querySelectorAll('[data-kind]'), function (b) {
+        b.classList.toggle('is-active', b === target);
+      });
+      reload().catch(function () { toast('过滤失败'); });
+    });
+
+    var sync = $('recordsSyncBtn');
+    if (sync) sync.addEventListener('click', function () {
+      fetch('/api/records/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      }).then(function (r) { return r.json(); }).then(function (r) {
+        toast('同步完成：新增 ' + (r.added || 0) + ' 条 · 重复 ' + (r.duplicated || 0) + ' 条');
+        reload();
+      }).catch(function (e) { toast('同步失败：' + e.message); });
+    });
+
+    var reveal = $('recordsRevealBtn');
+    if (reveal) {
+      if (!(window.cbNative && window.cbNative.reveal)) { reveal.hidden = true; }
+      else reveal.addEventListener('click', function () {
+        window.cbNative.reveal('.ticiqi/C_DONE_INDEX.md')
+          .then(function () { toast('已在访达里显示索引文件'); })
+          .catch(function () { toast('打不开，路径见上方「数据落点」'); });
+      });
+    }
+
+    var clBtn = $('recordsCleanupBtn');
+    var clInput = $('recordsCleanupInput');
+    if (clBtn && clInput) clBtn.addEventListener('click', function () {
+      var v = clInput.value.trim();
+      if (!v) { toast('先填要清理的 id，如 L0022'); return; }
+      fetch('/api/records/cleanup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: v.split(/[\s,，]+/).filter(Boolean), reason: '客户端清理' })
+      }).then(function (r) { return r.json(); }).then(function (r) {
+        if (!r.ok) { toast('清理失败：' + (r.error || '')); return; }
+        toast('已清理：' + (r.ids || []).join('、'));
+        reload();
+      }).catch(function (e) { toast('清理失败：' + e.message); });
+    });
+  });
+})();

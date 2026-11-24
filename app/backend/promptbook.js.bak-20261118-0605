@@ -1,0 +1,688 @@
+'use strict';
+
+/**
+ * promptbook.js —— Node.js (CommonJS) 移植版，直接对应 server/promptbook.py。
+ *
+ * 移植来源：/server/promptbook.py（Python 3，只读原件，不得修改）。
+ * 对应关系：
+ *   promptbook.PromptBook -> PromptBook
+ *   promptbook.health()   -> health()
+ *
+ * 两边必须保持一致：
+ *   - 体检规则（DIMS、正则表、提示语文案）逐条照抄，分数与建议完全相同；
+ *   - prompts.json 的字段结构、默认值合并规则、原子写；
+ *   - upsert / state() / accept_pending / dismiss_pending 的对外数据结构。
+ *
+ * 唯一的扩展：构造函数接受 options.readClipboard（async () => string）用于注入
+ * 剪贴板读取实现；不注入时按平台使用 pbpaste / powershell Get-Clipboard。
+ * setCapture 额外接受 intervalSec（Python 版从配置文件里读取同名字段）。
+ */
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { execFile } = require('child_process');
+
+const { cleanText, normalizeRelPath } = require('./store');
+const { computeStar } = require('./importer');
+
+const MAX_ITEMS = 600;
+const MAX_TEXT = 80000;
+const MAX_PENDING = 30;
+const SCORE_MAX = 15;
+const PROMPT_CATEGORIES = ['todo', 'idea', 'done', 'ai_done', 'invalid'];
+
+const DIMS = [
+  ['goal', '目标'],
+  ['boundary', '边界'],
+  ['acceptance', '可验收'],
+  ['context', '上下文'],
+  ['constraint', '约束'],
+];
+
+const GOAL_RE = /目的|目标|需要|想要|做成|开发|实现|要求|希望/;
+const BOUNDARY_RE = /不做|不要做|不实现|本轮不|后期|后续|暂不|排除|不属于/;
+const ACCEPT_RE = /验收|完成标准|能做到|能用|可用|通过|落地|检查|测试|跑通|看见|看到/;
+const CONSTRAINT_RE = /必须|不许|禁止|只读|不能改|不允许|规则|约束|限制|只能/;
+const CONTEXT_RE =
+  /(\/[A-Za-z\u4e00-\u9fa5])|\.(py|js|ts|md|json|css|html|command)(?![\p{L}\p{N}_])|文件夹|目录|项目|平台/u;
+
+// Python 的 re.M：^ 也能匹配换行之后的位置。
+const GOAL_ITEM_RE = /^\s*(\d+[.、)]|【)/m;
+const ACCEPT_DETAIL_RE = /验收|完成标准|判定/;
+const CONSTRAINT_HARD_RE = /必须|不许|禁止|不允许|只能/;
+const CONSTRAINT_DETAIL_RE = /只读|不改|不修改|只写|规则/;
+
+// -- Python 内建语义的最小模拟 ------------------------------------------------
+
+function _isDict(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Python 的 str()。
+function _pyStr(value) {
+  if (value === null || value === undefined) return 'None';
+  if (value === true) return 'True';
+  if (value === false) return 'False';
+  if (Array.isArray(value)) return '[' + value.map(_pyStr).join(', ') + ']';
+  return String(value);
+}
+
+// Python 的 bool()。
+function _pyBool(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+// Python 的 int()：非法输入返回 null（对应 Python 的 TypeError / ValueError）。
+function _pyInt(value) {
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    return Math.trunc(value);
+  }
+  if (typeof value === 'string') {
+    const s = value.trim().replace(/(?<=\d)_(?=\d)/g, '');
+    if (/^[+-]?\d+$/.test(s)) return parseInt(s, 10);
+    return null;
+  }
+  return null;
+}
+
+// Python 的 str.strip()（空白集合与 JS trim 略有差别，这里补齐 Python 侧独有的字符）。
+const PY_SPACE = /[\t\n\v\f\r \x1c-\x1f\x85\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+function _pyStrip(value) {
+  let start = 0;
+  let end = value.length;
+  while (start < end && PY_SPACE.test(value[start])) start += 1;
+  while (end > start && PY_SPACE.test(value[end - 1])) end -= 1;
+  return value.slice(start, end);
+}
+
+// 按码点切片（Python 的 str 切片语义）。
+function _pySlice(value, limit) {
+  const points = Array.from(value);
+  if (points.length <= limit) return points.join('');
+  return points.slice(0, limit).join('');
+}
+
+// 按码点计数（Python 的 len()）。
+function _pyLen(value) {
+  let n = 0;
+  for (const _ of value) n += 1;
+  return n;
+}
+
+// Python 的 str.splitlines()。
+function _pySplitLines(value) {
+  return value.split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/);
+}
+
+// dict.get(key, default)：只有键缺失时才用默认值。
+function _pick(obj, key, fallback) {
+  if (obj === null || obj === undefined) return fallback;
+  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : fallback;
+}
+
+// 避免 "__proto__" 之类的键污染原型链（Python 的 dict 没有这个问题）。
+function _safeSet(obj, key, value) {
+  if (key === '__proto__') {
+    Object.defineProperty(obj, key, {
+      value: value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  } else {
+    obj[key] = value;
+  }
+}
+
+// Python 的 str(Path)。
+function _normalizeDir(value) {
+  const raw = String(value === null || value === undefined ? '' : value);
+  if (!raw) return '.';
+  const absolute = raw.startsWith('/');
+  const parts = raw.split('/').filter((part) => part.length > 0 && part !== '.');
+  const joined = parts.join('/');
+  if (absolute) return '/' + joined;
+  return joined || '.';
+}
+
+// 原子写：同目录临时文件 + rename（对应 Python 的 _atomic_json）。
+function _atomicJson(target, payload, mode) {
+  const perm = mode === undefined ? 0o600 : mode;
+  const dir = path.dirname(target);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = path.join(
+    dir,
+    path.basename(target) + '.' + crypto.randomBytes(8).toString('hex') + '.tmp'
+  );
+  const body = JSON.stringify(payload, null, 2) + '\n';
+  const fd = fs.openSync(tmp, 'w', perm);
+  try {
+    fs.writeFileSync(fd, body, 'utf8');
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.chmodSync(tmp, perm);
+    fs.renameSync(tmp, target);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
+    throw err;
+  }
+}
+
+function _sha256(text) {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+// -- 体检 --------------------------------------------------------------------
+
+// 对应 Python 的 _tag_list()。
+function _tagList(value) {
+  let raw = [];
+  if (typeof value === 'string') {
+    raw = value.split(/[,，\s]+/);
+  } else if (Array.isArray(value)) {
+    raw = value.map((item) => _pyStr(item));
+  }
+  const out = [];
+  const seen = new Set();
+  for (const entry of raw) {
+    const item = cleanText(entry, 20);
+    if (item && !seen.has(item)) {
+      seen.add(item);
+      out.push(item);
+    }
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+// 对应 Python 的 _file_list()。
+function _fileList(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const entry of value) {
+    let rel = '';
+    try {
+      rel = normalizeRelPath(entry);
+    } catch (err) {
+      continue;
+    }
+    if (rel && !seen.has(rel)) {
+      seen.add(rel);
+      out.push(rel);
+    }
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
+// 对应 Python 的 _score_entry()。
+function _scoreEntry(raw) {
+  const base = {};
+  for (const [key] of DIMS) base[key] = 0;
+  if (_isDict(raw)) {
+    for (const [key] of DIMS) {
+      const parsed = _pyInt(_pick(raw, key, 0));
+      const value = parsed === null ? 0 : parsed;
+      base[key] = Math.max(0, Math.min(3, value));
+    }
+  }
+  return base;
+}
+
+/**
+ * 规则体检：只根据文本本身的结构打分，不做语义推断。
+ * 与 Python 的 health() 逐条一致。
+ */
+function health(text) {
+  const body = typeof text === 'string' ? text : (text ? _pyStr(text) : '');
+  const dims = [];
+  const advice = [];
+
+  let goal = 0;
+  if (GOAL_RE.test(body)) {
+    goal = 2;
+    if (GOAL_ITEM_RE.test(body)) goal = 3;
+  }
+  if (goal < 3) {
+    advice.push('把「要做什么」写成编号条目，每条一个动作，目标分才会满。');
+  }
+
+  let boundary = 0;
+  if (BOUNDARY_RE.test(body)) {
+    boundary = 3;
+  } else if (CONSTRAINT_RE.test(body)) {
+    boundary = 1;
+  }
+  if (boundary < 3) {
+    advice.push('写清「本轮不做」的清单，模型才不会顺手加功能。');
+  }
+
+  let acceptance = 0;
+  if (ACCEPT_RE.test(body)) {
+    acceptance = 2;
+    if (ACCEPT_DETAIL_RE.test(body)) acceptance = 3;
+  }
+  if (acceptance < 3) {
+    advice.push('给每条需求配一个「怎样算完成」的判定，最好能一眼看到结果。');
+  }
+
+  let context = 0;
+  const size = _pyLen(_pyStrip(body));
+  if (size >= 800) {
+    context = 3;
+  } else if (size >= 300) {
+    context = 2;
+  } else if (size >= 80) {
+    context = 1;
+  }
+  if (CONTEXT_RE.test(body) && context < 3) {
+    context += 1;
+  }
+  if (context < 3) {
+    advice.push('补上项目路径、文件名和背景，模型不用猜你在说哪份代码。');
+  }
+
+  let constraint = 0;
+  if (CONSTRAINT_HARD_RE.test(body)) {
+    constraint = 2;
+    if (CONSTRAINT_DETAIL_RE.test(body)) constraint = 3;
+  }
+  if (constraint < 3) {
+    advice.push('补硬约束：能不能改用户文件、能不能联网、能不能装依赖。');
+  }
+
+  const values = {
+    goal: goal,
+    boundary: boundary,
+    acceptance: acceptance,
+    context: context,
+    constraint: constraint,
+  };
+  for (const [key, label] of DIMS) {
+    dims.push({ key: key, label: label, value: values[key], max: 3 });
+  }
+
+  const total = values.goal + values.boundary + values.acceptance + values.context + values.constraint;
+  let level = '';
+  let levelText = '';
+  if (total >= 12) {
+    level = 'good';
+    levelText = '够用，可以直接发给 AI';
+  } else if (total >= 8) {
+    level = 'fair';
+    levelText = '能用，但会被追问细节';
+  } else {
+    level = 'weak';
+    levelText = '太薄，AI 只能靠猜';
+  }
+  return {
+    total: total,
+    max: SCORE_MAX,
+    level: level,
+    levelText: levelText,
+    dims: dims,
+    advice: advice.slice(0, 5),
+  };
+}
+
+// -- 剪贴板读取 --------------------------------------------------------------
+
+function _defaultReadClipboard() {
+  return new Promise((resolve) => {
+    try {
+      if (process.platform === 'darwin') {
+        execFile('pbpaste', { timeout: 3000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+          if (err) return resolve('');
+          resolve(String(stdout || '').trim());
+        });
+      } else if (process.platform === 'win32') {
+        execFile(
+          'powershell',
+          ['-NoProfile', '-Command', 'Get-Clipboard'],
+          { timeout: 3000, maxBuffer: 8 * 1024 * 1024 },
+          (err, stdout) => {
+            if (err) return resolve('');
+            resolve(String(stdout || '').trim());
+          }
+        );
+      } else {
+        resolve('');
+      }
+    } catch (err) {
+      resolve('');
+    }
+  });
+}
+
+// -- PromptBook --------------------------------------------------------------
+
+class PromptBook {
+  constructor(dataDir, options) {
+    const opts = _isDict(options) ? options : {};
+    this.dataDir = _normalizeDir(dataDir);
+    this.path = path.join(this.dataDir, 'prompts.json');
+    this._clipDigest = '';
+    this._stopped = false;
+    this._timer = null;
+    this._readClipboard =
+      typeof opts.readClipboard === 'function' ? opts.readClipboard : _defaultReadClipboard;
+    this.data = this._load();
+  }
+
+  // -- persistence -----------------------------------------------------
+
+  _load() {
+    const defaults = {
+      schema: 1,
+      items: [],
+      pending: [],
+      capture: { enabled: false, minLength: 40, intervalSec: 3 },
+    };
+    let raw = null;
+    try {
+      raw = JSON.parse(fs.readFileSync(this.path, 'utf8'));
+    } catch (err) {
+      return defaults;
+    }
+    if (!_isDict(raw)) return defaults;
+    const merged = Object.assign({}, defaults, raw);
+    merged.items = Array.isArray(raw.items) ? raw.items : [];
+    merged.pending = Array.isArray(raw.pending) ? raw.pending : [];
+    merged.capture = Object.assign(
+      {},
+      defaults.capture,
+      _isDict(raw.capture) ? raw.capture : {}
+    );
+    return merged;
+  }
+
+  _save() {
+    _atomicJson(this.path, this.data);
+  }
+
+  // -- serialisation ---------------------------------------------------
+
+  _public(item) {
+    const source = _isDict(item) ? item : {};
+    const text = _pyStr(_pick(source, 'text', '') || '');
+    return {
+      id: _pick(source, 'id', ''),
+      title: _pick(source, 'title', ''),
+      text: text,
+      tags: _pick(source, 'tags', []),
+      scores: _scoreEntry(_pick(source, 'scores', null)),
+      notes: _pick(source, 'notes', ''),
+      aiOutput: _pick(source, 'aiOutput', ''),
+      linkedFiles: _pick(source, 'linkedFiles', []),
+      source: _pick(source, 'source', 'manual'),
+      archived: _pyBool(_pick(source, 'archived', false)),
+      category: _pick(source, 'category', 'todo'),
+      segment: _pick(source, 'segment', ''),
+      star: _isDict(_pick(source, 'star', null)) ? { x: Number(_pick(source.star, 'x', 0)) || 0, y: Number(_pick(source.star, 'y', 0)) || 0 } : null,
+      createdAt: _pick(source, 'createdAt', 0),
+      updatedAt: _pick(source, 'updatedAt', 0),
+      health: health(text),
+    };
+  }
+
+  state() {
+    const items = (this.data.items || []).map((item) => this._public(item));
+    items.sort((a, b) => {
+      const av = a.updatedAt || 0;
+      const bv = b.updatedAt || 0;
+      return bv - av;
+    });
+    return {
+      items: items,
+      pending: (this.data.pending || []).slice(),
+      capture: Object.assign({}, this.data.capture || {}),
+      health: health(''),
+    };
+  }
+
+  // -- CRUD ------------------------------------------------------------
+
+  upsert(payload) {
+    if (!_isDict(payload)) {
+      throw new Error('参数格式不正确');
+    }
+    const text = cleanText(_pick(payload, 'text', null), MAX_TEXT);
+    let title = cleanText(_pick(payload, 'title', null), 120);
+    if (!text) {
+      throw new Error('需求原文不能为空');
+    }
+    if (!title) {
+      title = _pySlice(_pySplitLines(_pyStrip(text))[0] || '', 60) || '未命名需求';
+    }
+
+    const items = this.data.items;
+    const itemId = cleanText(_pick(payload, 'id', null), 48);
+    let target = null;
+    if (itemId) {
+      target = items.find((it) => _pick(it, 'id', null) === itemId) || null;
+    }
+    const now = Date.now();
+    if (target === null) {
+      if (items.length >= MAX_ITEMS) {
+        throw new Error('需求条目已达上限 ' + MAX_ITEMS + ' 条');
+      }
+      const newId = 'p_' + crypto.randomBytes(6).toString('hex');
+      target = { id: newId, createdAt: now, source: 'manual' };
+      items.push(target);
+    }
+    target.title = title;
+    target.text = text;
+    target.tags = _tagList(_pick(payload, 'tags', _pick(target, 'tags', null)));
+    target.scores = _scoreEntry(_pick(payload, 'scores', _pick(target, 'scores', null)));
+    target.notes = cleanText(_pick(payload, 'notes', _pick(target, 'notes', null)), 8000);
+    target.aiOutput = cleanText(_pick(payload, 'aiOutput', _pick(target, 'aiOutput', null)), 40000);
+    target.linkedFiles = _fileList(_pick(payload, 'linkedFiles', _pick(target, 'linkedFiles', null)));
+    target.archived = _pyBool(
+      _pick(payload, 'archived', _pick(target, 'archived', false))
+    );
+    target.category = PROMPT_CATEGORIES.includes(payload.category) ? payload.category : (target.category || 'todo');
+    target.segment = typeof payload.segment === 'string' ? payload.segment : (target.segment || '');
+    // 星图坐标：显式传了就用传的；否则按 (大类, 段落, 同段内序号) 重新算，
+    // 这样在文字面板里改了归类，星图位置会跟着变。
+    if (_isDict(payload.star)) {
+      target.star = { x: Number(payload.star.x) || 0, y: Number(payload.star.y) || 0 };
+    } else {
+      target.star = computeStar(target.category, target.segment, Number(target.starIndex) || 0);
+    }
+    target.updatedAt = now;
+    this._save();
+    return this._public(target);
+  }
+
+  delete(itemId) {
+    const id = cleanText(itemId, 48);
+    const before = this.data.items.length;
+    this.data.items = this.data.items.filter((it) => _pick(it, 'id', null) !== id);
+    this._save();
+    return { deleted: before - this.data.items.length };
+  }
+
+  // -- bulk import -----------------------------------------------------
+  // 纯代码解析出的条目批量入库（导入功能用）。按原文去重交给调用方；
+  // 这里只负责落库，每条写入 category / segment / star（星图坐标）。
+  importItems(items) {
+    if (!Array.isArray(items)) throw new Error('参数格式不正确');
+    const created = [];
+    for (const raw of items) {
+      if (!_isDict(raw)) continue;
+      const text = cleanText(_pick(raw, 'text', null), MAX_TEXT);
+      if (!text) continue;
+      const newId = 'p_' + crypto.randomBytes(6).toString('hex');
+      const target = { id: newId, createdAt: Date.now(), source: 'import' };
+      target.title = cleanText(_pick(raw, 'title', null), 120) || (_pySlice(_pySplitLines(_pyStrip(text))[0] || '', 60) || '未命名需求');
+      target.text = text;
+      target.tags = _tagList(_pick(raw, 'tags', null));
+      target.scores = {};
+      target.notes = '';
+      target.aiOutput = '';
+      target.linkedFiles = [];
+      target.category = PROMPT_CATEGORIES.includes(raw.category) ? raw.category : 'todo';
+      target.segment = typeof raw.segment === 'string' ? raw.segment : '';
+      target.starIndex = Number(raw.starIndex) || 0;
+      target.star = _isDict(raw.star) ? { x: Number(raw.star.x) || 0, y: Number(raw.star.y) || 0 } : null;
+      target.archived = false;
+      target.updatedAt = Date.now();
+      this.data.items.push(target);
+      created.push(this._public(target));
+    }
+    if (created.length) this._save();
+    return created;
+  }
+
+  // -- clipboard sync --------------------------------------------------
+
+  captureConfig() {
+    return Object.assign({}, this.data.capture || {});
+  }
+
+  setCapture(payload) {
+    if (!_isDict(payload)) {
+      throw new Error('参数格式不正确');
+    }
+    const cfg = Object.assign({}, this.data.capture || {});
+    if (Object.prototype.hasOwnProperty.call(payload, 'enabled')) {
+      cfg.enabled = _pyBool(payload.enabled);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'minLength')) {
+      const parsed = _pyInt(payload.minLength);
+      if (parsed !== null) {
+        cfg.minLength = Math.max(10, Math.min(2000, parsed));
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'intervalSec')) {
+      const parsed = _pyInt(payload.intervalSec);
+      if (parsed !== null) {
+        cfg.intervalSec = Math.max(2, Math.min(600, parsed));
+      }
+    }
+    this.data.capture = cfg;
+    this._save();
+    if (cfg.enabled) {
+      this.start();
+    } else {
+      this._clipDigest = '';
+    }
+    return cfg;
+  }
+
+  _pushPending(text) {
+    const digest = _sha256(text);
+    const pending = this.data.pending;
+    if (pending.some((p) => _pick(p, 'digest', null) === digest)) return;
+    const existing = this.data.items.some((it) => {
+      const body = _pyStr(_pick(it, 'text', ''));
+      return _sha256(body) === digest;
+    });
+    if (existing) return;
+    pending.unshift({
+      id: 'c_' + digest.slice(0, 12),
+      digest: digest,
+      text: _pySlice(text, MAX_TEXT),
+      at: Date.now(),
+      length: _pyLen(text),
+    });
+    pending.splice(MAX_PENDING);
+    this._save();
+  }
+
+  acceptPending(pendingId) {
+    const id = cleanText(pendingId, 48);
+    const entry = this.data.pending.find((p) => _pick(p, 'id', null) === id);
+    if (!entry) {
+      throw new Error('这条候选已经不在列表里');
+    }
+    this.data.pending = this.data.pending.filter((p) => _pick(p, 'id', null) !== id);
+    this._save();
+    return this.upsert({ text: entry.text, source: 'clipboard' });
+  }
+
+  dismissPending(pendingId) {
+    const id = cleanText(pendingId, 48);
+    const before = this.data.pending.length;
+    this.data.pending = this.data.pending.filter((p) => _pick(p, 'id', null) !== id);
+    this._save();
+    return { removed: before - this.data.pending.length };
+  }
+
+  // -- watcher ---------------------------------------------------------
+
+  start() {
+    if (this._running) return;
+    this._running = true;
+    this._stopped = false;
+    this._tick();
+  }
+
+  stop() {
+    this._stopped = true;
+    if (this._timer) {
+      clearTimeout(this._timer);
+      this._timer = null;
+    }
+  }
+
+  _schedule(delayMs) {
+    this._timer = setTimeout(() => {
+      this._timer = null;
+      this._tick();
+    }, delayMs);
+    // 必须 unref()，否则 Node 进程会因为这个定时器一直存活。
+    if (this._timer && typeof this._timer.unref === 'function') this._timer.unref();
+  }
+
+  async _tick() {
+    if (this._stopped) return;
+    const cfg = this.captureConfig();
+    if (!cfg.enabled) {
+      this._schedule(2000);
+      return;
+    }
+    try {
+      await this._poll(cfg);
+    } catch (err) {
+      /* 与 Python 版一致：读剪贴板失败时静默跳过。 */
+    }
+    if (this._stopped) return;
+    const next = this.captureConfig();
+    const seconds = Math.max(2, Number(next.intervalSec) || 3);
+    this._schedule(seconds * 1000);
+  }
+
+  async _poll(cfg) {
+    const text = await this._readClipboard();
+    const raw = cfg.minLength;
+    let threshold = 40;
+    if (raw) {
+      const parsed = _pyInt(raw);
+      if (parsed === null) throw new Error('minLength 非法');
+      threshold = parsed;
+    }
+    if (text && _pyLen(text) >= threshold) {
+      const digest = _sha256(text);
+      if (digest !== this._clipDigest) {
+        this._clipDigest = digest;
+        this._pushPending(text);
+      }
+    }
+  }
+}
+
+module.exports = { PromptBook, health };

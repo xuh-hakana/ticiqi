@@ -1,0 +1,776 @@
+{
+  "version": "2.3.1",
+  "releasedAt": "2026-11-06",
+  "summary": "提词器汇总所有项目的版本公告。目前收录：命令方块。",
+  "note": "本文件存所有项目的版本公告（自动总结）。每条 section 的 project 标明属于哪个项目。命令方块面向用户的精简公告在 命令方块/版本公告.json，只记大更新，两者用途不同，不是双份。",
+  "sections": [
+    {
+      "id": "V231",
+      "title": "v2.3.1 扇形交互分工（单击选中 · 双击打开 · 2026-11-06）",
+      "items": [
+        {
+          "task": "V231-1",
+          "title": "单击只选中，双击才打开",
+          "desc": "单击扇形片 / 图例行＝只把粉色标记挪过去，不改统计层、不跳视图；双击＝进下一层并让中栏打开这个目录或文件，左栏树同步展开定位。面包屑和起点按钮仍是单击生效（它们是回退/换起点，不是进下一层）。键盘聚焦图例行按 Enter 等于双击。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function pickSlice",
+            "line": 1099,
+            "label": "选中与双击"
+          }
+        },
+        {
+          "task": "V231-2",
+          "title": "默认选中最大片，根移到最右",
+          "desc": "每进一层自动把占比最大的那一片标成选中（只标、不自动钻进去），换层/换范围时选中态清空并落回新层最大片。起点按钮从「根 1 2 3」改成「1 2 3 根」：数字越大越往上、根最远，避免被读成「根下面第 1 层」。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function renderPieLevels",
+            "line": 1008,
+            "label": "层级顺序"
+          }
+        },
+        {
+          "task": "V231-3",
+          "title": "粉色小点改成内外圈发光",
+          "desc": "原来是一段短弧，现在是内圈实心点 + 外圈光环 + 侧边一层淡光晕，画在圆环外侧。三层都 pointer-events:none，实测点扇形片照样能跳，光晕不吃点击。标记独立成一层，单击换选时只挪位置、不重画圆环，浏览器才能把两次点击配成原生双击。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function renderPieSvg",
+            "line": 889,
+            "label": "发光标记"
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "V230",
+      "title": "v2.3.0 本轮新增（复制文件文本）",
+      "items": [
+        {
+          "task": "V230-1",
+          "title": "「复制」按钮",
+          "desc": "文件页右上角、收藏左边。没有选中文字时复制整个文件；在代码区选中一段时只复制那一段，不会把行号和界面文字带进去。",
+          "link": {
+            "path": "命令方块/web/index.html",
+            "anchor": "id=\"copyFileBtn\"",
+            "label": "按钮",
+            "line": 277
+          }
+        },
+        {
+          "task": "V230-2",
+          "title": "复制走主进程剪贴板",
+          "desc": "渲染层的 navigator.clipboard 在文档没聚焦时会被 Chromium 直接拒绝（Document is not focused），切窗口回来就可能失败。改成主进程写剪贴板，不受焦点影响；拿不到桥时依次降级到浏览器接口和 execCommand。",
+          "link": {
+            "path": "命令方块/app/main.js",
+            "anchor": "cb:writeClipboard",
+            "label": "主进程写剪贴板",
+            "line": 144
+          }
+        },
+        {
+          "task": "V230-3",
+          "title": "复制逻辑",
+          "desc": "文本取自后端返回的原文（state.currentFile.content），不是渲染后的 DOM——DOM 里每行套了高亮 span，直接取会带上行号。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "async function copyCurrent(",
+            "label": "复制逻辑",
+            "line": 1921
+          }
+        },
+        {
+          "task": "V230-4",
+          "title": "⌘⇧C 快捷键",
+          "desc": "不用点按钮。有选区时让给系统默认的复制，没选区才复制整个文件，避免抢掉正常的选中复制。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "event.key.toLowerCase() === \"c\"",
+            "label": "快捷键",
+            "line": 2977
+          }
+        },
+        {
+          "task": "V230-5",
+          "title": "复制量提示",
+          "desc": "复制完弹一条提示：复制了多少行、多少字，是整份还是选中。失败时说清是系统剪贴板不可用。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function selectedCodeText(",
+            "label": "选区判断与提示",
+            "line": 1945
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "V221",
+      "title": "v2.2.1 扇形关联视图（双向联动 · 2026-11-06）",
+      "items": [
+        {
+          "task": "V221-1",
+          "title": "扇形跟着视图走",
+          "desc": "打开目录、打开文件、回欢迎页、按目录筛选、从地址直接跳，扇形都自动统计「当前正在看的那个目录」；换根文件夹则回到根。目录视图下整个圆就是当前目录，中心会写明，不会拿上次打开的文件去误标某一片。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function syncPieToView",
+            "line": 666,
+            "label": "跟随视图"
+          }
+        },
+        {
+          "task": "V221-2",
+          "title": "点扇形真的跳目录，不是只换统计层",
+          "desc": "点目录片 = 中间打开这个目录；点文件片 = 中间打开这个文件；点面包屑任意一层 = 回到那一层。收藏夹 / 拖入 是虚拟层级（分类、外部文件夹），不是项目内路径，仍只在扇形内部往下钻，不乱跳。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function pieDrill",
+            "line": 1015,
+            "label": "点击跳转"
+          }
+        },
+        {
+          "task": "V221-3",
+          "title": "左栏文件树一起定位",
+          "desc": "跳目录时，左栏文件树自动展开到同一层、把该目录滚进视野并高亮；切到目录视图时不再出现「目录行 + 上次的文件行」两行同时亮。当前文件自己就是一片时也会高亮并打指针弧（上一版只认深层路径，会漏掉）。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "async function openFolder",
+            "line": 2006,
+            "label": "树同步"
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "V21",
+      "title": "v2.2.0 本轮补完（文件树改动标记 · 夜晚模式 · 大小占比扇形 · 三栏拖动）",
+      "items": [
+        {
+          "task": "V22-1",
+          "title": "改过的文件打青点",
+          "desc": "打开之后被外部改过的文件，名字后面亮一颗实心青点，鼠标悬停显示「打开后被改过 21:54」。只在变化的那一刻亮，之后一直留着，一眼能看出改了哪几个。",
+          "link": {
+            "path": "命令方块/web/js/effects.js",
+            "anchor": "function markChanged(",
+            "line": 310,
+            "label": "打点逻辑"
+          }
+        },
+        {
+          "task": "V22-2",
+          "title": "父目录打空心圈",
+          "desc": "文件在折叠着的目录里看不到行，就把标记往上冒一层：祖先目录亮一颗空心青圈，展开后能看到具体是哪个文件。",
+          "link": {
+            "path": "命令方块/web/js/effects.js",
+            "anchor": "function ancestorsOf(",
+            "line": 303,
+            "label": "上冒一层"
+          }
+        },
+        {
+          "task": "V22-3",
+          "title": "同步事件直接带改动清单",
+          "desc": "后端扫描时顺手比对新旧 mtime + size，把变了的路径放进 SSE 的 tree 事件（上限 200 条）。前端不再为了打一颗点去拉整棵树——那棵树 1.9 MB，每 2 秒拉一次不划算。",
+          "link": {
+            "path": "命令方块/app/backend/server.js",
+            "anchor": "function diffFileState(",
+            "line": 52,
+            "label": "差异计算"
+          }
+        },
+        {
+          "task": "V22-4",
+          "title": "样式与可访问性",
+          "desc": "青点用主题里的电光青（同步色），6px 实心 / 空心两态；带 240ms 生长动画；系统开启「减少动态效果」时不动。",
+          "link": {
+            "path": "命令方块/web/theme.css",
+            "anchor": ".tree-row.is-changed > .tree-name::after",
+            "line": 408,
+            "label": "点样式"
+          }
+        },
+        {
+          "task": "V22-5",
+          "title": "大小占比扇形（左栏顶部）",
+          "desc": "一块迷你统计板：环形图 + 图例 + 总大小与文件数。三个可切换的范围——当前（跟着你正在看的文件走，可选上溯 1/2/3 层，默认根目录）、收藏夹（按分类统计）、拖入（把访达里的文件夹直接拖到图上，或把左栏的文件夹拖过去）。点一片统计它的下一级，再点图例或面包屑往回退。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function pieAggregate",
+            "line": 717,
+            "label": "聚合与钻取"
+          }
+        },
+        {
+          "task": "V22-6",
+          "title": "当前在扇形的哪个位置",
+          "desc": "正在看的那一片会被推出一点、描一道亮边，图例同步加粗；占比极小的片（比如一堆 .app 旁边的 web）在环上只是一条缝，所以在最外圈按真实角度画一段独立的指针弧——只标位置，不放大面积、不改比例。改过文件的片带青点，和文件树上的青点是同一份数据。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function renderPieSvg",
+            "line": 799,
+            "label": "扇形绘制"
+          }
+        },
+        {
+          "task": "V22-7",
+          "title": "夜晚模式（与白天完全两套视觉）",
+          "desc": "顶栏「夜晚」一键切换，选择记在本机。夜晚不是把白天调暗：深底 + 霓虹描边 + 等宽 HUD + 网格底纹，面板之间用 1px 发光分界线，代码区是独立终端片。首帧之前就把主题定好，不会先白一下再变黑。",
+          "link": {
+            "path": "命令方块/web/night.css",
+            "anchor": "html[data-theme=\"night\"]",
+            "line": 10,
+            "label": "夜晚样式"
+          }
+        },
+        {
+          "task": "V22-8",
+          "title": "中左两栏可拖宽 + 收藏夹修复",
+          "desc": "两条分界线各骑一根拖动条，拖左栏和中栏的宽度，松手记住、刷新还在。收藏夹这边修了两处：保存接口只认 PUT、POST 被拒导致收藏存不下去；新建分类时保存回包会重绘列表，把刚弹出的输入框冲掉，根本打不了字。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "function bindColumnResize",
+            "line": 1166,
+            "label": "拖动与收藏"
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "V2.1",
+      "title": "v2.1.0 提词器改成独立客户端（本轮修正）",
+      "items": [
+        {
+          "task": "V2.1-1",
+          "title": "提词器 = 独立客户端，不是网页窗口",
+          "desc": "新增 提词器.app：独立 Electron 进程、独立图标、独立窗口标题、独立 Dock 项，双击就开；命令方块没开、或关掉之后，提词器照常用。原来的做法是在命令方块进程里开第二个 BrowserWindow 加载网页再靠 CSS 藏掉别的栏，已移除。",
+          "link": {
+            "path": "命令方块/app/prompter-main.js",
+            "anchor": "",
+            "label": "独立主进程",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2.1-2",
+          "title": "命令方块内不再显示提词器",
+          "desc": "主界面的「提词器」tab、整块 prompt-view、顶栏「独立窗口」按钮全部摘掉；提示词事件不绑定、数据不加载。旧书签 #/prompt 回欢迎页。",
+          "link": {
+            "path": "命令方块/web/js/boot.js",
+            "anchor": "",
+            "label": "模式开关",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2.1-3",
+          "title": "数据共用 1 份，端口分 2 个",
+          "desc": "需求库 prompts.json 仍放在 CommandBlock 数据目录，两个客户端读同一份；命令方块写 port（虚幻客户端「看原文」用），提词器写 port-prompter，互不覆盖。剪贴板采集轮询只在提词器进程启动，避免两个进程同时写同一份 json。",
+          "link": {
+            "path": "命令方块/app/backend/server.js",
+            "anchor": "",
+            "label": "端口文件与采集开关",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2.1-4",
+          "title": "两个客户端共用 1 份业务代码",
+          "desc": "同一份 web/index.html + web/js/app.js，靠 ?app=prompter 走不同的初始化分支：命令方块跑文件树，提词器只跑需求库。没有复制第二套页面、没有复制 2852 行 app.js。两个 .app 都只是入口壳。",
+          "link": {
+            "path": "命令方块/web/js/app.js",
+            "anchor": "",
+            "label": "双模式启动分支",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2.1-5",
+          "title": "关联文件在独立客户端改为系统定位",
+          "desc": "提词器没有文件视图，点已关联的文件改为在系统文件管理器里定位；候选清单仍来自同一份只读扫描。需求库、体检、剪贴板同步、关联文件 4 项功能全部保留。",
+          "link": {
+            "path": "命令方块/app/prompter-main.js",
+            "anchor": "",
+            "label": "关联文件定位",
+            "line": 1
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "V2",
+      "title": "v2.0.0 本轮新增（原生客户端 + 浮动块 + 两个特效 + 提词器分离）",
+      "items": [
+        {
+          "task": "V2-1",
+          "title": "原生客户端，匹配 win/mac",
+          "desc": "Objective-C + WKWebView 外壳换成 Electron；Windows 与 macOS 同一套代码、同一个窗口形态，不再需要装 Python。旧版 .app 已归档到 总备份，可随时回退。",
+          "link": {
+            "path": "命令方块/app/main.js",
+            "anchor": "app.whenReady",
+            "label": "主进程",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2-2",
+          "title": "服务层从 Python 迁到 Node",
+          "desc": "scanner / store / promptbook / server 四个模块全部用 Node 重写，接口与返回结构逐条对齐，原前端一行未改即可复用。",
+          "link": {
+            "path": "命令方块/app/backend/server.js",
+            "anchor": "class App",
+            "label": "Node 服务层",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2-3",
+          "title": "浮动块界面 + 游戏感",
+          "desc": "三栏与顶栏拆成互不接边的圆角浮动卡；方块切角、等宽 HUD 标签、状态灯、深色终端代码面板；品红=当前，电光青=同步。简洁清晰，只在一处用力。",
+          "link": {
+            "path": "命令方块/web/theme.css",
+            "anchor": ":root",
+            "label": "主题样式",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2-4",
+          "title": "文件实时改动 → 文字飞入砸进面板",
+          "desc": "SSE 收到目录变更、当前文件重画时，变化的行从上方飞入落位，配一次很轻的面板冲击和一条「已同步 +N 行」HUD；420ms 结束，不循环、不浮夸。",
+          "link": {
+            "path": "命令方块/web/js/effects.js",
+            "anchor": "function flyIn",
+            "label": "飞入逻辑",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2-5",
+          "title": "悬浮命令行 → 文字数据化渐变成解释",
+          "desc": "鼠标停在代码行上，命令/关键字/属性以溶解再聚拢的动画翻成中文；字符串、数字、路径、未登记的名字原样保留。例：const port = 8899; → 常量 端口 = 8899;",
+          "link": {
+            "path": "命令方块/web/js/effects.js",
+            "anchor": "function explainLine",
+            "label": "解释与词库",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2-6",
+          "title": "提词器拆成独立窗口",
+          "desc": "主窗口顶栏「独立窗口」一键开出单独的提词器窗口；独立窗口只显示需求库、体检与关联文件，不带文件树和顶栏。",
+          "link": {
+            "path": "命令方块/app/main.js",
+            "anchor": "function createPrompterWindow",
+            "label": "独立窗口",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2-7",
+          "title": "单实例 + 看原文复用窗口",
+          "desc": "Electron 单实例锁；虚幻客户端「看原文」仍走端口文件 + /api/focus，命令方块开着就复用同一窗口并置顶，不开第二个。",
+          "link": {
+            "path": "命令方块/app/backend/server.js",
+            "anchor": "/api/focus",
+            "label": "focus 接口",
+            "line": 1
+          }
+        },
+        {
+          "task": "V2-8",
+          "title": "数据目录跨平台",
+          "desc": "mac 沿用 ~/Library/Application Support/CommandBlock，Windows 用 %APPDATA%/CommandBlock；收藏夹、API 配置、需求库、port 文件位置不变，旧数据直接可读。",
+          "link": {
+            "path": "命令方块/app/backend/server.js",
+            "anchor": "function defaultDataDir",
+            "label": "数据目录",
+            "line": 1
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "A",
+      "title": "历史档案 · v1 本轮验收目标（A1–A5）",
+      "items": [
+        {
+          "task": "A1",
+          "title": "读取文件夹",
+          "desc": "输入路径或调用 macOS 文件夹选择器，只读扫描，不做任何写入。默认打开 xuhuan mac。",
+          "link": {
+            "path": "server/server.py",
+            "anchor": "class RepoService(",
+            "label": "RepoService",
+            "line": 67
+          }
+        },
+        {
+          "task": "A2",
+          "title": "分类收藏夹（可拖动）",
+          "desc": "文件/文件夹拖进分类；分类之间、条目之间都能拖动排序；按工作区分别保存。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function favoriteCategories(",
+            "label": "收藏夹逻辑",
+            "line": 347
+          }
+        },
+        {
+          "task": "A3",
+          "title": "API 入口 + 状态监测",
+          "desc": "填 Base URL / 模型 / Key，Key 只存本机、界面打码；顶部圆点实时显示连通状态，点一下可重新探测。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function apiStatusCard(",
+            "label": "API 状态卡",
+            "line": 1597
+          }
+        },
+        {
+          "task": "A4",
+          "title": "功能索引（文件中真实的函数/类）",
+          "desc": "扫描出每个文件的函数、类、路由，点条目直接跳到源码行。",
+          "link": {
+            "path": "server/scanner.py",
+            "anchor": "def build_symbol_index(",
+            "label": "索引构建",
+            "line": 619
+          }
+        },
+        {
+          "task": "A5",
+          "title": "主项目迁移建议（只文字，不执行）",
+          "desc": "给出虚幻酱搬到 Mac 的位置与目录结构建议，本轮不动主项目文件。",
+          "link": {
+            "path": "docs/主项目迁移建议.md",
+            "anchor": "# 主项目【虚幻酱】迁入 Mac 的建议位置与目录结构",
+            "label": "迁移建议文档",
+            "line": 1
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "B",
+      "title": "历史档案 · v1 基础子任务（B1–B14）",
+      "items": [
+        {
+          "task": "B1/B2",
+          "title": "读取 + 看文件",
+          "desc": "点击文件即读全文，语法高亮、行号、只读展示。",
+          "link": {
+            "path": "server/scanner.py",
+            "anchor": "def read_visible_file(",
+            "label": "文件读取",
+            "line": 713
+          }
+        },
+        {
+          "task": "B3",
+          "title": "可视化页面",
+          "desc": "三栏布局：左边文件树/收藏夹，中间文件内容，右边详情与索引。",
+          "link": {
+            "path": "web/index.html",
+            "anchor": "<body",
+            "label": "页面骨架",
+            "line": 1
+          }
+        },
+        {
+          "task": "B4",
+          "title": "类收藏夹栏",
+          "desc": "支持分类、文件夹、文件三种层级。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function favoriteEntry(",
+            "label": "收藏条目",
+            "line": 351
+          }
+        },
+        {
+          "task": "B5/B6",
+          "title": "API 入口与监测",
+          "desc": "保存后可一键测试；失败给出具体原因，不静默。",
+          "link": {
+            "path": "server/server.py",
+            "anchor": "if path == \"/api/api/test\":",
+            "label": "测试接口",
+            "line": 644
+          }
+        },
+        {
+          "task": "B7",
+          "title": "文件数量状态栏",
+          "desc": "底部显示文件总数、新文件数、扫描时间。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function apiDotClass(",
+            "label": "状态栏",
+            "line": 1561
+          }
+        },
+        {
+          "task": "B8/B12",
+          "title": "新文件跳转 + 自动同步",
+          "desc": "SSE 长连接监听目录变化，新文件打「新」标并可一键跳转。",
+          "link": {
+            "path": "server/server.py",
+            "anchor": "if path == \"/api/events\":",
+            "label": "事件流",
+            "line": 577
+          }
+        },
+        {
+          "task": "B9/B11",
+          "title": "文件筛选与检索",
+          "desc": "按名称/路径搜索，按类型筛选。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function promptList(",
+            "label": "检索",
+            "line": 2346
+          }
+        },
+        {
+          "task": "B10",
+          "title": "收藏夹跳转",
+          "desc": "点收藏条目直接打开对应文件页。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function favoritePathSets(",
+            "label": "收藏路径",
+            "line": 364
+          }
+        },
+        {
+          "task": "B13",
+          "title": "相对引用缺失检测",
+          "desc": "检查 import/require 指向的文件是否存在；只报相对引用，不做全项目静态分析。",
+          "link": {
+            "path": "server/scanner.py",
+            "anchor": "def _resolve_js(",
+            "label": "引用解析",
+            "line": 586
+          }
+        },
+        {
+          "task": "B14",
+          "title": "功能索引及跳转",
+          "desc": "同 A4，索引即功能清单。",
+          "link": {
+            "path": "server/scanner.py",
+            "anchor": "def extract_symbols(",
+            "label": "符号提取",
+            "line": 524
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "NEW",
+      "title": "历史档案 · v1 本次新增（客户端形态 + 提词器）",
+      "items": [
+        {
+          "task": "C-1",
+          "title": "原生客户端窗口",
+          "desc": "双击 .app 直接开会话窗口，无地址栏、无书签栏；自动起本地服务、退出即关；支持 ⌘R 刷新、⌘+/- 缩放。",
+          "link": {
+            "path": "源码/launcher.m",
+            "anchor": "int main(",
+            "label": "窗口外壳",
+            "line": 1
+          }
+        },
+        {
+          "task": "C-2",
+          "title": "提词器 · 需求库",
+          "desc": "把需求原文存成条目，可搜索、可编辑、可删除；每条带提示词体检分。",
+          "link": {
+            "path": "server/promptbook.py",
+            "anchor": "class PromptBook:",
+            "label": "需求库",
+            "line": 177
+          }
+        },
+        {
+          "task": "C-3",
+          "title": "提词器 · 提示词体检",
+          "desc": "按目标、边界、验收、约束、可执行五个维度打分，指出缺哪一层并给出补写建议。",
+          "link": {
+            "path": "server/promptbook.py",
+            "anchor": "def health(",
+            "label": "体检算法",
+            "line": 99
+          }
+        },
+        {
+          "task": "C-4",
+          "title": "提词器 · 关联文件跳转",
+          "desc": "每条需求可挂若干文件，点一下跳到该文件页；这是后期「按需求跳转」的底座。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function promptById(",
+            "label": "需求详情",
+            "line": 2350
+          }
+        },
+        {
+          "task": "C-5",
+          "title": "提词器 · 待确认队列",
+          "desc": "把临时想到的需求先丢进队列，之后再决定收进需求库还是丢弃。",
+          "link": {
+            "path": "server/server.py",
+            "anchor": "if path == \"/api/prompts/capture\":",
+            "label": "需求采集",
+            "line": 665
+          }
+        },
+        {
+          "task": "C-6",
+          "title": "文件用途说明",
+          "desc": "每个文件可写一句「这是干什么的」；没写时自动读文件头部注释顶上，不留空白。",
+          "link": {
+            "path": "web/js/app.js",
+            "anchor": "function noteTextFor(",
+            "label": "用途说明",
+            "line": 2211
+          }
+        }
+      ],
+      "project": "命令方块"
+    },
+    {
+      "id": "ENV",
+      "title": "历史档案 · v1 环境与启动",
+      "items": [
+        {
+          "task": "E-1",
+          "title": "双击启动",
+          "desc": "打开 命令方块.app 即可；不需要终端、不需要装 Python 包。",
+          "link": {
+            "path": "源码/build.command",
+            "anchor": "./",
+            "label": "构建脚本",
+            "line": 1
+          }
+        },
+        {
+          "task": "E-2",
+          "title": "数据存放",
+          "desc": "收藏夹、API 配置、需求库都在 ~/Library/Application Support/CommandBlock/，不进项目目录。",
+          "link": {
+            "path": "server/store.py",
+            "anchor": "class Store:",
+            "label": "本地存储",
+            "line": 82
+          }
+        },
+        {
+          "task": "E-3",
+          "title": "日志",
+          "desc": "运行日志在 ~/Library/Logs/CommandBlock.log，出问题先看这里。",
+          "link": {
+            "path": "源码/launcher.m",
+            "anchor": "CommandBlock.log",
+            "label": "日志位置",
+            "line": 1
+          }
+        }
+      ],
+      "project": "命令方块"
+    }
+  ],
+  "candidates": [
+    {
+      "id": "C1",
+      "title": "AI 注解（本轮不做）"
+    },
+    {
+      "id": "C2",
+      "title": "Bug 检测（本轮不做）"
+    },
+    {
+      "id": "C3",
+      "title": "全项目缺失文件检测（本轮不做；仅保留相对引用检查）"
+    },
+    {
+      "id": "C4",
+      "title": "（v2 已实现）悬浮命令行含义解释，文字数据化渐变，保留具体值"
+    },
+    {
+      "id": "C5",
+      "title": "AI 词条及跳转（本轮不做）"
+    },
+    {
+      "id": "C6",
+      "title": "用户需求绑定及跳转（提词器已做关联文件，绑定主项目未做）"
+    },
+    {
+      "id": "C7",
+      "title": "（v2 已实现）页面各栏改成浮动块布局"
+    },
+    {
+      "id": "D1",
+      "title": "（v2 已实现）Windows 版：Electron + Node，与 mac 同一套代码"
+    },
+    {
+      "id": "D2",
+      "title": "插件打包（后续）"
+    },
+    {
+      "id": "D3",
+      "title": "自动修复（后续）"
+    },
+    {
+      "id": "D4",
+      "title": "平台接入（后续）"
+    },
+    {
+      "id": "D5",
+      "title": "（v2 已实现）多平台适配：win/mac 同形态"
+    },
+    {
+      "id": "D6",
+      "title": "其他工具接口（后续）"
+    },
+    {
+      "id": "D7",
+      "title": "半功能调用（后续）"
+    },
+    {
+      "id": "D8",
+      "title": "人设自动生成（后续）"
+    },
+    {
+      "id": "D9",
+      "title": "文件最小（后续）"
+    }
+  ],
+  "notes": [
+    "只读：本工具不会修改、移动、删除你的任何文件，也不会跟随符号链接。",
+    "镜像排除：密钥、日志、缓存、node_modules、构建产物不进文件树；工具自身文件单独分组，避免递归。",
+    "v2.1 起提词器是单独一个 提词器.app（独立进程、独立图标、双击即开）；命令方块里不再显示提词器；仍不接主项目。",
+    "两个客户端共用 1 份需求库数据，但端口文件分开：命令方块 port、提词器 port-prompter，互不覆盖。",
+    "v2 起不再需要 Python：服务由各自 Electron 主进程内的 Node 提供，双击即开、退出即关。",
+    "上一轮需求原文在 docs/用户需求-本轮.md；本轮原文在 docs/用户需求-v2原文.md（含 v2.1 补充原话），两份都保留、都不改写。",
+    "改动标记只在本机内存里，重启客户端重新开始记；不写任何存储。",
+    "未做完的、需要她定的、已知缺口，见 总备份/遗留问题/命令方块-待办与缺口.md。",
+    "扇形图只统计已扫进文件树的文本文件；非文本、被镜像排除的目录不参与，所以「总大小」不等于访达里看到的体积。",
+    "夜晚模式是纯换皮：结构、快捷键、数据与白天完全一致；系统开启「减少动态效果」时，扇形推出与切换动画会自动关掉。",
+    "v2.2.1：起点 1/2/3 只换统计起点、不跳目录；想让中间也过去，直接点扇形片或面包屑。",
+    "v2.2.1：扇形只与「当前」范围联动；收藏夹 / 拖入 两个范围保持独立，切过去不会被视图覆盖。",
+    "v2.3.1：粉色发光点＝「选中的那一片」（默认最大片）；「当前正在看的那一层」仍由扇片推出 + 亮边 + 图例加粗表示，两者是不同标记。",
+    "v2.3.1：收藏夹 / 拖入 是虚拟层级，双击只在扇形内部钻取，不开中栏页面；它们的 key 是分类 id 或外部路径，不是项目内相对路径。"
+  ]
+}

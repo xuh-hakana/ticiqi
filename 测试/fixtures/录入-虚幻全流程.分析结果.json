@@ -1,0 +1,623 @@
+{
+  "stats": {
+    "profile": "feature-doc",
+    "entries": 5,
+    "tables": 1,
+    "deduped": 0,
+    "unresolvedFiles": 2,
+    "confidence": "medium",
+    "totalTokens": 666,
+    "projectId": "proj_mwqxfwwwrbps",
+    "projectName": "虚幻"
+  },
+  "proposals": [
+    {
+      "localKey": "p1",
+      "kind": "feature",
+      "title": "陌生人在群里说话",
+      "text": "一、全流程：陌生人 → 认识的人 → 朋友\n① 陌生人在群里说话\n添加到对话放大下载环节代码做什么入口qq.onMessage每条消息都过判断people.findByAccount('qq', uid)有没有档案没档案seen.note(uid, gid, card, nickname)只进内存（上限 500，重启清空），不写 people.json、不建档本轮提示词「这个群的群名片」合并 seen.cardsOf(gid)她会看到 名字（身份：陌生人 · 还没回过的生人）称呼nick.nameFor 未建档直接返回昵称不落盘",
+      "projectId": "proj_mwqxfwwwrbps",
+      "projectName": "虚幻",
+      "parentNodeId": "node_001",
+      "nodePath": [
+        "全流程：陌生人 → 认识的人 → 朋友",
+        "陌生人在群里说话"
+      ],
+      "nodePathFull": "人物识别与建档/全流程：陌生人 → 认识的人 → 朋友/陌生人在群里说话",
+      "status": "ai_done",
+      "source": "xuhbot-impl",
+      "priority": "high",
+      "segments": {
+        "后端": "代码做什么\n入口qq.onMessage\n每条消息都过\n判断people.findByAccount('qq', uid)\n称呼nick.nameFor\n未建档直接返回昵称不落盘",
+        "背景": "没档案seen.note(uid, gid, card, nickname)\n不建档",
+        "数据来源": "只进内存（上限 500，重启清空），\n不写 people.json、",
+        "前端": "本轮提示词「这个群的群名片」合并 seen.cardsOf(gid)\n她会看到 名字（身份：陌生人 · 还没回过的生人）",
+        "应用场景": "陌生人在群里说话"
+      },
+      "segCount": 5,
+      "acceptance": [
+        "没档案seen.note(uid, gid, card, nickname)",
+        "只进内存（上限 500，重启清空）",
+        "不写 people.json",
+        "本轮提示词「这个群的群名片」合并 seen.cardsOf(gid)",
+        "未建档直接返回昵称不落盘"
+      ],
+      "files": [
+        {
+          "ref": "qq.js",
+          "resolved": "src/connectors/qq.js",
+          "exists": true,
+          "candidates": [
+            "src/connectors/qq.js",
+            "总备份/xuhbot备份/20261111-需求复查补做/src/connectors/qq.js"
+          ]
+        },
+        {
+          "ref": "people.js",
+          "resolved": "src/people.js",
+          "exists": true,
+          "candidates": [
+            "src/people.js"
+          ]
+        },
+        {
+          "ref": "seen.js",
+          "resolved": null,
+          "exists": false,
+          "candidates": []
+        },
+        {
+          "ref": "nick.js",
+          "resolved": "src/nick.js",
+          "exists": true,
+          "candidates": [
+            "src/nick.js"
+          ]
+        },
+        {
+          "ref": "people.json",
+          "resolved": "src/data/people.json",
+          "exists": true,
+          "candidates": [
+            "src/data/people.json",
+            "总备份/xuhbot备份/删私聊前-20261107/people.json"
+          ]
+        }
+      ],
+      "links": [
+        {
+          "kind": "联动",
+          "ref": "req:p2",
+          "note": "下一步：她回了他 → 建档"
+        },
+        {
+          "kind": "联动",
+          "ref": "node:node_002",
+          "note": "发生在公共平台"
+        },
+        {
+          "kind": "复用",
+          "ref": "file:src/data/people.json",
+          "note": "同一份人物表读写"
+        }
+      ],
+      "table": null,
+      "token": 178,
+      "confidence": "high",
+      "evidence": [
+        "按文档结构拆条（5 条）",
+        "指定项目「虚幻」",
+        "只有一个根节点，回退到「人物识别与建档」",
+        "一级标题「全流程：陌生人 → 认识的人 → 朋友」作功能父节点",
+        "文件待核实：seen.js",
+        "文件已按项目根解析"
+      ],
+      "dedupeKey": "28a8e2d079521197",
+      "profile": "feature-doc"
+    },
+    {
+      "localKey": "p2",
+      "kind": "feature",
+      "title": "她回了他 → 建档",
+      "text": "一、全流程：陌生人 → 认识的人 → 朋友\n② 她回了他 → 建档\n触发点是消息真发出去那一刻（r2.text 非空；纯情绪回图那条也算），对象是 turnCtx.aimUid（主人在跟别人说话时是那个人）。\nseen.enroll 一次写全：\n\n账号 qq:uid\nrole = stranger（陌生人）\nsex = male、sexSrc = guess（默认猜男）\nfavor = 0\nname = ''（真名空着，等本人承认）\nnick = 资料卡昵称\ncards{本群: 群名片}\ndates 记第一次相遇",
+      "projectId": "proj_mwqxfwwwrbps",
+      "projectName": "虚幻",
+      "parentNodeId": "node_001",
+      "nodePath": [
+        "全流程：陌生人 → 认识的人 → 朋友",
+        "她回了他 → 建档"
+      ],
+      "nodePathFull": "人物识别与建档/全流程：陌生人 → 认识的人 → 朋友/她回了他 → 建档",
+      "status": "ai_done",
+      "source": "xuhbot-impl",
+      "priority": "high",
+      "segments": {
+        "后端": "触发点是消息真发出去那一刻（r2.text 非空\n对象是 turnCtx.aimUid（主人在跟别人说话时是那个人）\nseen.enroll 一次写全：",
+        "数据来源": "账号 qq:uid\nrole = stranger（陌生人）\nsex = male、sexSrc = guess（默认猜男）\nfavor = 0\nnick = 资料卡昵称\ncards{本群: 群名片}\ndates 记第一次相遇",
+        "背景": "name = ''（真名空着，等本人承认）",
+        "应用场景": "她回了他 → 建档"
+      },
+      "segCount": 4,
+      "acceptance": [
+        "触发点是消息真发出去那一刻（r2.text 非空",
+        "对象是 turnCtx.aimUid（主人在跟别人说话时是那个人）",
+        "seen.enroll 一次写全",
+        "role = stranger（陌生人）",
+        "sex = male、sexSrc = guess（默认猜男）",
+        "favor = 0",
+        "name = ''（真名空着，等本人承认）",
+        "nick = 资料卡昵称"
+      ],
+      "files": [
+        {
+          "ref": "qq.js",
+          "resolved": "src/connectors/qq.js",
+          "exists": true,
+          "candidates": [
+            "src/connectors/qq.js",
+            "总备份/xuhbot备份/20261111-需求复查补做/src/connectors/qq.js"
+          ]
+        },
+        {
+          "ref": "people.js",
+          "resolved": "src/people.js",
+          "exists": true,
+          "candidates": [
+            "src/people.js"
+          ]
+        },
+        {
+          "ref": "seen.js",
+          "resolved": null,
+          "exists": false,
+          "candidates": []
+        },
+        {
+          "ref": "nick.js",
+          "resolved": "src/nick.js",
+          "exists": true,
+          "candidates": [
+            "src/nick.js"
+          ]
+        },
+        {
+          "ref": "people.json",
+          "resolved": "src/data/people.json",
+          "exists": true,
+          "candidates": [
+            "src/data/people.json",
+            "总备份/xuhbot备份/删私聊前-20261107/people.json"
+          ]
+        }
+      ],
+      "links": [
+        {
+          "kind": "联动",
+          "ref": "req:p3",
+          "note": "下一步：陌生人 → 认识的人"
+        },
+        {
+          "kind": "联动",
+          "ref": "req:p1",
+          "note": "上一步：陌生人在群里说话"
+        },
+        {
+          "kind": "联动",
+          "ref": "node:node_002",
+          "note": "发生在公共平台"
+        }
+      ],
+      "table": null,
+      "token": 173,
+      "confidence": "high",
+      "evidence": [
+        "按文档结构拆条（5 条）",
+        "指定项目「虚幻」",
+        "只有一个根节点，回退到「人物识别与建档」",
+        "一级标题「全流程：陌生人 → 认识的人 → 朋友」作功能父节点",
+        "文件待核实：seen.js",
+        "文件已按项目根解析"
+      ],
+      "dedupeKey": "2814bf0ca3110a9b",
+      "profile": "feature-doc"
+    },
+    {
+      "localKey": "p3",
+      "kind": "feature",
+      "title": "陌生人 → 认识的人",
+      "text": "一、全流程：陌生人 → 认识的人 → 朋友\n③ 陌生人 → 认识的人\n现算，不写字段：role='stranger' 且没有真名且好感=0 才算陌生人；有了真名（本人自报 / 你面板改）或好感 > 0，就是认识的人。",
+      "projectId": "proj_mwqxfwwwrbps",
+      "projectName": "虚幻",
+      "parentNodeId": "node_001",
+      "nodePath": [
+        "全流程：陌生人 → 认识的人 → 朋友",
+        "陌生人 → 认识的人"
+      ],
+      "nodePathFull": "人物识别与建档/全流程：陌生人 → 认识的人 → 朋友/陌生人 → 认识的人",
+      "status": "ai_done",
+      "source": "xuhbot-impl",
+      "priority": "high",
+      "segments": {
+        "后端": "现算，不写字段：role='stranger' 且没有真名且好感=0 才算陌生人",
+        "前端": "有了真名（本人自报 / 你面板改）或好感 > 0，就是认识的人",
+        "应用场景": "陌生人 → 认识的人"
+      },
+      "segCount": 3,
+      "acceptance": [
+        "现算，不写字段：role='stranger' 且没有真名且好感=0 才算陌生人",
+        "有了真名（本人自报 / 你面板改）或好感 > 0，就是认识的人"
+      ],
+      "files": [
+        {
+          "ref": "people.js",
+          "resolved": "src/people.js",
+          "exists": true,
+          "candidates": [
+            "src/people.js"
+          ]
+        },
+        {
+          "ref": "people.json",
+          "resolved": "src/data/people.json",
+          "exists": true,
+          "candidates": [
+            "src/data/people.json",
+            "总备份/xuhbot备份/删私聊前-20261107/people.json"
+          ]
+        },
+        {
+          "ref": "panel.js",
+          "resolved": "src/server/panel.js",
+          "exists": true,
+          "candidates": [
+            "src/server/panel.js",
+            "总备份/xuhbot备份/20261111-需求复查补做/src/server/panel.js"
+          ]
+        }
+      ],
+      "links": [
+        {
+          "kind": "联动",
+          "ref": "req:p4",
+          "note": "下一步：认识的人 → 朋友"
+        },
+        {
+          "kind": "联动",
+          "ref": "req:p2",
+          "note": "上一步：她回了他 → 建档"
+        },
+        {
+          "kind": "联动",
+          "ref": "node:node_002",
+          "note": "发生在公共平台"
+        }
+      ],
+      "table": null,
+      "token": 72,
+      "confidence": "high",
+      "evidence": [
+        "按文档结构拆条（5 条）",
+        "指定项目「虚幻」",
+        "只有一个根节点，回退到「人物识别与建档」",
+        "一级标题「全流程：陌生人 → 认识的人 → 朋友」作功能父节点",
+        "文件已按项目根解析"
+      ],
+      "dedupeKey": "9209c21eefbc17b9",
+      "profile": "feature-doc"
+    },
+    {
+      "localKey": "p4",
+      "kind": "feature",
+      "title": "认识的人 → 朋友",
+      "text": "一、全流程：陌生人 → 认识的人 → 朋友\n④ 认识的人 → 朋友\n只有一条线：favor > 20（people.FRIEND_AT，面板朋友录同一个常量）。好感来源：被夸 +1、你面板手改、衰减。",
+      "projectId": "proj_mwqxfwwwrbps",
+      "projectName": "虚幻",
+      "parentNodeId": "node_001",
+      "nodePath": [
+        "全流程：陌生人 → 认识的人 → 朋友",
+        "认识的人 → 朋友"
+      ],
+      "nodePathFull": "人物识别与建档/全流程：陌生人 → 认识的人 → 朋友/认识的人 → 朋友",
+      "status": "ai_done",
+      "source": "xuhbot-impl",
+      "priority": "high",
+      "segments": {
+        "后端": "只有一条线：",
+        "前端": "favor > 20（people.FRIEND_AT，面板朋友录同一个常量）\n好感来源：被夸 +1、你面板手改、衰减",
+        "应用场景": "认识的人 → 朋友"
+      },
+      "segCount": 3,
+      "acceptance": [
+        "favor > 20（people.FRIEND_AT，面板朋友录同一个常量）",
+        "好感来源：被夸 +1、你面板手改、衰减"
+      ],
+      "files": [
+        {
+          "ref": "people.js",
+          "resolved": "src/people.js",
+          "exists": true,
+          "candidates": [
+            "src/people.js"
+          ]
+        },
+        {
+          "ref": "panel.js",
+          "resolved": "src/server/panel.js",
+          "exists": true,
+          "candidates": [
+            "src/server/panel.js",
+            "总备份/xuhbot备份/20261111-需求复查补做/src/server/panel.js"
+          ]
+        },
+        {
+          "ref": "favor.js",
+          "resolved": "src/favor.js",
+          "exists": true,
+          "candidates": [
+            "src/favor.js",
+            "src/learn/favor.js"
+          ]
+        }
+      ],
+      "links": [
+        {
+          "kind": "联动",
+          "ref": "req:p5",
+          "note": "下一步：全资料什么时候写"
+        },
+        {
+          "kind": "联动",
+          "ref": "req:p3",
+          "note": "上一步：陌生人 → 认识的人"
+        },
+        {
+          "kind": "联动",
+          "ref": "node:node_002",
+          "note": "发生在公共平台"
+        },
+        {
+          "kind": "复用",
+          "ref": "file:src/people.js",
+          "note": "FRIEND_AT 与面板朋友录同一常量"
+        }
+      ],
+      "table": null,
+      "token": 67,
+      "confidence": "high",
+      "evidence": [
+        "按文档结构拆条（5 条）",
+        "指定项目「虚幻」",
+        "只有一个根节点，回退到「人物识别与建档」",
+        "一级标题「全流程：陌生人 → 认识的人 → 朋友」作功能父节点",
+        "文件已按项目根解析"
+      ],
+      "dedupeKey": "480b5db0b854ad85",
+      "profile": "feature-doc"
+    },
+    {
+      "localKey": "p5",
+      "kind": "feature",
+      "title": "全资料什么时候写",
+      "text": "一、全流程：陌生人 → 认识的人 → 朋友\n⑤ 全资料什么时候写\n添加到对话放大下载字段来源什么时候写真名本人自报 / 你面板说「我叫X」「叫我X」；面板改资料卡QQ 昵称他说话且昵称变了群名片事件里的 card他说话且名片变了；card 空不覆盖B站昵称B站 事件 / 加账号时拉一次变了才写性别默认男猜 / 本人自述 / 面板建档；「我是女的」；面板身份现算不落盘好感被夸 / 面板 / 衰减变化时喜好·事实·约定·话题各自链路发生即记第一次相遇建档时建档代称（别人喊的）AI 听到 / 你写记录时曾用名真实资料被覆盖覆盖时",
+      "projectId": "proj_mwqxfwwwrbps",
+      "projectName": "虚幻",
+      "parentNodeId": "node_001",
+      "nodePath": [
+        "全流程：陌生人 → 认识的人 → 朋友",
+        "全资料什么时候写"
+      ],
+      "nodePathFull": "人物识别与建档/全流程：陌生人 → 认识的人 → 朋友/全资料什么时候写",
+      "status": "ai_done",
+      "source": "xuhbot-impl",
+      "priority": "medium",
+      "segments": {
+        "前端": "字段来源什么时候写真名本人自报 / 你面板说「我叫X」「叫我X」\n面板改资料卡QQ 昵称他说话且昵称变了群名片事件里的 card他说话且名片变了\ncard 空不覆盖B站昵称B站 事件 / 加账号时拉一次变了才写性别默认男猜 / 本人自述 / 面板建档\n面板身份\n现算不落盘好感被夸 / 面板 / 衰减变化时喜好·事实·约定·话题各自链路发生即记第一次相遇建档时建档代称（别人喊的）AI 听到 / 你写记录时曾用名真实资料被覆盖覆盖时\n真名本人自报 / 你面板说「我叫X」「叫我X」；面板改资料卡\n性别默认男猜 / 本人自述 / 面板建档；「我是女的」；面板\n身份面板 现算不落盘\n好感被夸 / 面板 / 衰减变化时",
+        "数据来源": "| 字段 | 来源 | 时机 |\n| --- | --- | --- |\n| 真名 | 本人自报 / 你面板说「我叫X」「叫我X」；面板改资料卡 | — |\n| QQ 昵称 | 资料卡 | 他说话且昵称变了 |\n| 群名片 | 事件里的 card | 他说话且名片变了；card 空不覆盖 |\n| B站昵称 | B站 事件 / 加账号时拉一次 | 变了才写 |\n| 性别 | 默认男猜 / 本人自述 / 面板建档；「我是女的」；面板 | — |\n| 身份 | 面板 | 现算不落盘 |\n| 好感 | 被夸 / 面板 / 衰减 | 变化时 |\n| 喜好·事实·约定·话题 | 各自链路 | 发生即记 |\n| 第一次相遇 | 建档时建档 | — |\n| 代称（别人喊的） | 建档 AI 听到 / 你写记录时 | — |\n| 曾用名 | 你写记录时 真实资料被覆盖 | 覆盖时 |",
+        "后端": "群名片事件里的 card他说话且名片变了；card 空不覆盖\nB站昵称B站 事件 / 加账号时拉一次变了才写\n身份面板 现算不落盘\n好感被夸 / 面板 / 衰减变化时\n喜好·事实·约定·话题各自链路发生即记\n第一次相遇建档时建档\n曾用名你写记录时 真实资料被覆盖覆盖时",
+        "应用场景": "全资料什么时候写"
+      },
+      "segCount": 4,
+      "acceptance": [
+        "真名：本人自报 / 你面板说「我叫X」「叫我X」；面板改资料卡 → —",
+        "QQ 昵称：资料卡 → 他说话且昵称变了",
+        "群名片：事件里的 card → 他说话且名片变了；card 空不覆盖",
+        "B站昵称：B站 事件 / 加账号时拉一次 → 变了才写",
+        "性别：默认男猜 / 本人自述 / 面板建档；「我是女的」；面板 → —",
+        "身份：面板 → 现算不落盘",
+        "好感：被夸 / 面板 / 衰减 → 变化时",
+        "喜好·事实·约定·话题：各自链路 → 发生即记",
+        "第一次相遇：建档时建档 → —",
+        "代称（别人喊的）：建档 AI 听到 / 你写记录时 → —",
+        "曾用名：你写记录时 真实资料被覆盖 → 覆盖时"
+      ],
+      "files": [
+        {
+          "ref": "qq.js",
+          "resolved": "src/connectors/qq.js",
+          "exists": true,
+          "candidates": [
+            "src/connectors/qq.js",
+            "总备份/xuhbot备份/20261111-需求复查补做/src/connectors/qq.js"
+          ]
+        },
+        {
+          "ref": "people.js",
+          "resolved": "src/people.js",
+          "exists": true,
+          "candidates": [
+            "src/people.js"
+          ]
+        },
+        {
+          "ref": "nick.js",
+          "resolved": "src/nick.js",
+          "exists": true,
+          "candidates": [
+            "src/nick.js"
+          ]
+        },
+        {
+          "ref": "people.json",
+          "resolved": "src/data/people.json",
+          "exists": true,
+          "candidates": [
+            "src/data/people.json",
+            "总备份/xuhbot备份/删私聊前-20261107/people.json"
+          ]
+        },
+        {
+          "ref": "panel.js",
+          "resolved": "src/server/panel.js",
+          "exists": true,
+          "candidates": [
+            "src/server/panel.js",
+            "总备份/xuhbot备份/20261111-需求复查补做/src/server/panel.js"
+          ]
+        },
+        {
+          "ref": "favor.js",
+          "resolved": "src/favor.js",
+          "exists": true,
+          "candidates": [
+            "src/favor.js",
+            "src/learn/favor.js"
+          ]
+        },
+        {
+          "ref": "profile-sync.js",
+          "resolved": "src/profile-sync.js",
+          "exists": true,
+          "candidates": [
+            "src/profile-sync.js"
+          ]
+        }
+      ],
+      "links": [
+        {
+          "kind": "联动",
+          "ref": "req:p4",
+          "note": "上一步：认识的人 → 朋友"
+        },
+        {
+          "kind": "联动",
+          "ref": "req:p1",
+          "note": "字段来源覆盖第 1 步"
+        },
+        {
+          "kind": "联动",
+          "ref": "req:p2",
+          "note": "字段来源覆盖第 2 步"
+        },
+        {
+          "kind": "联动",
+          "ref": "req:p3",
+          "note": "字段来源覆盖第 3 步"
+        },
+        {
+          "kind": "联动",
+          "ref": "node:node_002",
+          "note": "字段来源跨平台"
+        },
+        {
+          "kind": "联动",
+          "ref": "node:node_003",
+          "note": "字段来源跨平台"
+        },
+        {
+          "kind": "联动",
+          "ref": "node:node_004",
+          "note": "字段来源跨平台"
+        },
+        {
+          "kind": "复用",
+          "ref": "file:src/data/people.json",
+          "note": "同一份人物表读写"
+        }
+      ],
+      "table": {
+        "rows": [
+          {
+            "field": "真名",
+            "source": "本人自报 / 你面板说「我叫X」「叫我X」；面板改资料卡",
+            "when": "",
+            "raw": "真名本人自报 / 你面板说「我叫X」「叫我X」；面板改资料卡"
+          },
+          {
+            "field": "QQ 昵称",
+            "source": "资料卡",
+            "when": "他说话且昵称变了",
+            "raw": "QQ 昵称资料卡 他说话且昵称变了"
+          },
+          {
+            "field": "群名片",
+            "source": "事件里的 card",
+            "when": "他说话且名片变了；card 空不覆盖",
+            "raw": "群名片事件里的 card他说话且名片变了；card 空不覆盖"
+          },
+          {
+            "field": "B站昵称",
+            "source": "B站 事件 / 加账号时拉一次",
+            "when": "变了才写",
+            "raw": "B站昵称B站 事件 / 加账号时拉一次变了才写"
+          },
+          {
+            "field": "性别",
+            "source": "默认男猜 / 本人自述 / 面板建档；「我是女的」；面板",
+            "when": "",
+            "raw": "性别默认男猜 / 本人自述 / 面板建档；「我是女的」；面板"
+          },
+          {
+            "field": "身份",
+            "source": "面板",
+            "when": "现算不落盘",
+            "raw": "身份面板 现算不落盘"
+          },
+          {
+            "field": "好感",
+            "source": "被夸 / 面板 / 衰减",
+            "when": "变化时",
+            "raw": "好感被夸 / 面板 / 衰减变化时"
+          },
+          {
+            "field": "喜好·事实·约定·话题",
+            "source": "各自链路",
+            "when": "发生即记",
+            "raw": "喜好·事实·约定·话题各自链路发生即记"
+          },
+          {
+            "field": "第一次相遇",
+            "source": "建档时建档",
+            "when": "",
+            "raw": "第一次相遇建档时建档"
+          },
+          {
+            "field": "代称（别人喊的）",
+            "source": "建档 AI 听到 / 你写记录时",
+            "when": "",
+            "raw": "代称（别人喊的）建档 AI 听到 / 你写记录时"
+          },
+          {
+            "field": "曾用名",
+            "source": "你写记录时 真实资料被覆盖",
+            "when": "覆盖时",
+            "raw": "曾用名你写记录时 真实资料被覆盖覆盖时"
+          }
+        ],
+        "markdown": "| 字段 | 来源 | 时机 |\n| --- | --- | --- |\n| 真名 | 本人自报 / 你面板说「我叫X」「叫我X」；面板改资料卡 | — |\n| QQ 昵称 | 资料卡 | 他说话且昵称变了 |\n| 群名片 | 事件里的 card | 他说话且名片变了；card 空不覆盖 |\n| B站昵称 | B站 事件 / 加账号时拉一次 | 变了才写 |\n| 性别 | 默认男猜 / 本人自述 / 面板建档；「我是女的」；面板 | — |\n| 身份 | 面板 | 现算不落盘 |\n| 好感 | 被夸 / 面板 / 衰减 | 变化时 |\n| 喜好·事实·约定·话题 | 各自链路 | 发生即记 |\n| 第一次相遇 | 建档时建档 | — |\n| 代称（别人喊的） | 建档 AI 听到 / 你写记录时 | — |\n| 曾用名 | 你写记录时 真实资料被覆盖 | 覆盖时 |",
+        "editable": true
+      },
+      "token": 176,
+      "confidence": "medium",
+      "evidence": [
+        "按文档结构拆条（5 条）",
+        "指定项目「虚幻」",
+        "只有一个根节点，回退到「人物识别与建档」",
+        "一级标题「全流程：陌生人 → 认识的人 → 朋友」作功能父节点",
+        "压平表格已还原 11 行（可编辑，原文保留）",
+        "文件已按项目根解析"
+      ],
+      "dedupeKey": "b53be183d6833557",
+      "profile": "feature-doc"
+    }
+  ]
+}

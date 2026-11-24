@@ -1,0 +1,9 @@
+{
+  "note": "这是干什么的：提词器启动时自动把最近的工作区日志同步进已完成区，AI 每轮不必调命令、也不必在提示词里记这件事。改路径或天数后重启提词器生效。logRoots 可写多个（数组或逗号分隔）：根是父目录时扫「根/<会话>/.workbuddy/memory」，根是工作区本身时扫「根/.workbuddy/memory」，根是 memory 目录时直接扫里面 *.md。",
+  "enabled": true,
+  "logRoots": [
+    "/Users/zhengbowen/WorkBuddy",
+    "/Volumes/980/xuhuan mac"
+  ],
+  "maxAgeDays": 2
+}

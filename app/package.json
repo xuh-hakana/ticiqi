@@ -1,0 +1,14 @@
+{
+  "name": "ticiqi-prompter",
+  "version": "2.2.0",
+  "description": "提词器独立项目：双击 ticiqi/提词器.app 即可运行，不依赖命令方块",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --verbose"
+  },
+  "devDependencies": {
+    "electron": "45.2.1"
+  }
+}

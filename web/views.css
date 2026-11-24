@@ -1,0 +1,192 @@
+/* ===========================================================================
+   提词器 · 三视图就地互切样式（星图选星星 / 文件夹 / 文字）
+   ---------------------------------------------------------------------------
+   基准：逐字原文 59/61 行——星图像"选星星"、外部看标题点击看内容、背景小星星移动、要炫酷；
+         三视图就地互切、展开预览才显示文件/文件夹。
+   后加载覆盖层：不改 styles.css / theme.css / night.css / 三套皮肤任何一行。
+   只用现有 CSS 变量，白天夜晚 + 三套皮肤通吃。
+   =========================================================================== */
+
+/* ---------- 视图切换按钮：主导航 tab ---------- */
+.tc-view-btn[disabled] { opacity: 1; }
+.tc-view-btn[data-tc-mainview-btn] { font-size: 12px; padding: 6px 14px; }
+.tc-view-btn[data-tc-mainview-btn].is-active,
+.star-tools .tc-btn.is-active {
+  border-bottom: 2px solid var(--accent, #d85a30);
+  border-radius: 8px 8px 0 0;
+}
+
+/* ---------- 平级主视图容器 ---------- */
+.tc-mainview-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.tc-mainview-pane[hidden] { display: none !important; }
+.prompt-view { display: flex; flex-direction: column; min-height: 0; }
+
+/* ---------- 父级/同级/子级 就地切换（61 行） ---------- */
+.tc-context-nav {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-top: 8px; padding: 5px 8px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-2);
+}
+.tc-context-nav[hidden] { display: none !important; }
+.tc-ctx-btn {
+  font: inherit; font-size: 11px; line-height: 1;
+  padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--surface); color: var(--ink-soft); cursor: pointer;
+  transition: transform .2s, opacity .2s, border-color .2s;
+}
+.tc-ctx-btn:hover:not(:disabled) { border-color: var(--accent, #d85a30); color: var(--ink); transform: translateY(-1px); }
+.tc-ctx-btn:active:not(:disabled) { transform: translateY(0) scale(.95); }
+.tc-ctx-btn:focus-visible { outline: 2px solid var(--accent, #d85a30); outline-offset: 2px; }
+.tc-ctx-btn:disabled { opacity: .4; cursor: not-allowed; }
+.tc-ctx-current {
+  font-size: 11px; font-weight: 500; color: var(--ink);
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 4px 8px; border-radius: 6px; background: var(--accent-soft, var(--surface-3));
+}
+.tc-ctx-sep { width: 1px; height: 16px; background: var(--line-strong); margin: 0 3px; }
+.tc-ctx-view { color: var(--accent-dark, var(--ink)); }
+
+/* ---------- 星图工具条 ---------- */
+.star-toolbar, .folder-req-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 8px 22px; border-bottom: 1px solid var(--line); background: var(--surface-2);
+}
+.star-title { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.star-hint { font-size: 11px; color: var(--faint); }
+.star-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.star-zoom-text { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); min-width: 42px; text-align: center; }
+
+/* ---------- 星图舞台：深色星空 + 缓慢移动的小星星（59/61 行"背景滑动小星星"） ---------- */
+.star-stage {
+  flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden;
+  cursor: grab; touch-action: none;
+  background-color: var(--surface);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+.star-stage:active { cursor: grabbing; }
+.star-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.sky-star {
+  position: absolute; display: block; border-radius: 50%;
+  background: var(--accent, #d85a30); opacity: .35;
+  box-shadow: 0 0 6px var(--accent, #d85a30);
+  will-change: transform;
+}
+.sky-l0 { opacity: .22; animation: skyDrift0 46s linear infinite; }
+.sky-l1 { opacity: .38; animation: skyDrift1 34s linear infinite; }
+.sky-l2 { opacity: .55; animation: skyDrift2 24s linear infinite; }
+@keyframes skyDrift0 { from { transform: translateX(0); } to { transform: translateX(120px); } }
+@keyframes skyDrift1 { from { transform: translateX(0); } to { transform: translateX(-160px); } }
+@keyframes skyDrift2 { from { transform: translateX(0); } to { transform: translateX(200px); } }
+@media (prefers-reduced-motion: reduce) { .sky-star { animation: none !important; } }
+
+.star-world {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  transform-origin: 0 0; will-change: transform;
+}
+.star-links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.star-line { stroke-width: 1.2; opacity: .45; }
+.star-l-amber { stroke: #BA7517; }
+.star-l-purple { stroke: #7F77DD; }
+.star-l-teal { stroke: #1D9E75; }
+.star-l-blue { stroke: #378ADD; }
+.star-l-gray { stroke: #888780; }
+.star-cards { position: absolute; left: 0; top: 0; }
+
+/* ---------- 星星节点：发光圆点 + 标题（59 行"外部看标题，不要一板一眼文件夹"） ---------- */
+.star-node {
+  position: absolute; width: 150px; min-height: 30px;
+  display: flex; align-items: center; gap: 8px;
+  cursor: grab; user-select: none;
+  transition: transform .2s, filter .2s;
+}
+.star-node:hover { transform: scale(1.06); filter: brightness(1.12); }
+.star-node:active { cursor: grabbing; }
+.star-node:focus-visible { outline: 2px solid var(--accent, #d85a30); outline-offset: 3px; border-radius: 8px; }
+.star-dot {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; position: relative;
+}
+.star-dot::before {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  background: currentColor; opacity: .18; filter: blur(6px);
+}
+.star-dot i {
+  width: 10px; height: 10px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+.star-c-amber .star-dot { color: #BA7517; }
+.star-c-purple .star-dot { color: #7F77DD; }
+.star-c-teal .star-dot { color: #1D9E75; }
+.star-c-blue .star-dot { color: #378ADD; }
+.star-c-gray .star-dot { color: #888780; }
+.star-node.is-selected .star-dot::before { opacity: .4; }
+.star-node-label {
+  font-size: 12px; font-weight: 500; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 7px;
+  padding: 3px 8px; line-height: 1.3; overflow-wrap: anywhere;
+  box-shadow: 0 1px 4px rgba(0,0,0,.1);
+}
+.star-node.is-selected .star-node-label { border-color: var(--accent, #d85a30); color: var(--accent-dark, var(--ink)); }
+.star-node-score { font-family: var(--mono); font-size: 9px; color: var(--faint); }
+.star-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+/* ---------- 展开预览：仅此态显示文件/文件夹（61 行） ---------- */
+.star-preview {
+  position: absolute; right: 22px; top: 60px; width: 320px; max-height: calc(100% - 90px);
+  overflow: auto; z-index: 20;
+  display: flex; flex-direction: column; gap: 9px;
+  padding: 16px; border: 1px solid var(--line-strong); border-radius: 12px;
+  background: var(--surface); box-shadow: 0 8px 30px rgba(0,0,0,.22);
+}
+.star-preview[hidden] { display: none !important; }
+.star-preview-head { display: flex; align-items: center; justify-content: space-between; }
+.star-preview-cat {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .05em;
+  color: var(--accent-dark, var(--ink)); background: var(--accent-soft, var(--surface-2));
+  padding: 2px 8px; border-radius: 5px;
+}
+.star-preview-title { margin: 0; font-size: 15px; color: var(--ink); }
+.star-preview-text { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink-soft); overflow-wrap: anywhere; }
+.star-preview-files { border-top: 1px solid var(--line); padding-top: 9px; display: flex; flex-direction: column; gap: 5px; }
+.sp-files-label { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+.sp-file {
+  display: flex; align-items: center; gap: 6px; text-align: left;
+  font: inherit; font-size: 11px; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+  background: var(--surface-2); cursor: pointer;
+}
+.sp-file:hover { border-color: var(--accent, #d85a30); color: var(--ink); }
+.sp-file .icon { width: 13px; height: 13px; flex: 0 0 auto; }
+.sp-file-none { font-size: 11px; color: var(--faint); }
+.star-preview-foot { display: flex; justify-content: flex-end; }
+
+/* ---------- 文件夹：需求树 ---------- */
+.folder-req-tree { flex: 1 1 auto; overflow: auto; padding: 14px 24px 40px; }
+.fld-cat, .fld-seg { margin: 0 0 6px; }
+.fld-cat > summary { font-size: 13px; font-weight: 600; color: var(--ink); padding: 6px 4px; cursor: pointer; }
+.fld-seg { margin-left: 18px; }
+.fld-seg > summary { font-size: 12px; color: var(--ink-soft); padding: 4px; cursor: pointer; }
+.fld-count { font-family: var(--mono); font-size: 10px; color: var(--faint); background: var(--surface-2); border-radius: 8px; padding: 1px 7px; margin-left: 6px; }
+.folder-req-tree ul { list-style: none; margin: 2px 0 8px; padding-left: 20px; }
+.folder-req-tree li { display: flex; align-items: center; gap: 4px; }
+.fld-item {
+  border: 0; background: transparent; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--ink-soft);
+  padding: 3px 6px; border-radius: 6px; text-align: left; flex: 1;
+}
+.fld-item:hover, .fld-item.is-selected { color: var(--accent-dark, var(--ink)); background: var(--surface-2); }
+.fld-open-file {
+  border: 0; background: transparent; cursor: pointer; font-size: 13px;
+  color: var(--muted); padding: 2px 6px; border-radius: 5px;
+}
+.fld-open-file:hover { color: var(--accent-dark, var(--ink)); background: var(--surface-2); }
+.folder-empty { font-size: 13px; color: var(--muted); padding: 20px 4px; }
+.fld-note { margin-top: 18px; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 8px; font-size: 11px; color: var(--faint); line-height: 1.6; }
+
+/* 深色皮肤下星星/预览阴影 */
+html[data-skin="nocturne"] .star-node-label,
+html[data-skin="cybercore"] .star-node-label,
+html[data-skin="nocturne"] .star-preview,
+html[data-skin="cybercore"] .star-preview { box-shadow: 0 2px 12px rgba(0,0,0,.5); }

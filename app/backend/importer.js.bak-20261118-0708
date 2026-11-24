@@ -1,0 +1,111 @@
+'use strict';
+// importer.js —— 纯代码规则的「原始需求导入」解析器。
+//
+// 干什么的：把一段原始需求文本（就是 `需求/用户原始需求-逐字原文.txt` 这种）
+// 拆成一条条需求，并自动判断它属于「三大类（待办/想法/已完成/AI转正/失效）
+// + 六段（应用场景/背景/前端/后端/数据来源/前端排版）」，再算出它在星图上的坐标。
+//
+// 为什么是纯代码、不调模型：她原始需求里定了「代码优先 / 省 token」。分类是
+// 关键词启发式猜测，归类不准用户可以在文字面板里点一下改。星图画布还没做，
+// 这里先把坐标算好存着，将来画星图时直接用。
+
+const SEGMENTS = ['应用场景', '背景', '前端', '后端', '数据来源', '前端排版'];
+const CATEGORIES = ['todo', 'idea', 'done', 'ai_done', 'invalid'];
+
+const SEGMENT_KEYWORDS = {
+  应用场景: /场景|应用|用途|用的时候|使用场景|使用|什么时候用|什么情况下/,
+  背景: /背景|为什么|目的|原因|上下文|初衷|动机|要解决|要澄清/,
+  前端: /前端|界面|UI|页面|面板|视图|星图|文字模式|文件夹模式|显示|交互|拖拽|皮肤|排版|标红|弹层|按钮|布局|样式|图标|炫酷|游戏感|星/,
+  后端: /后端|接口|API|服务|存储|数据库|监听|同步|端口|缓存|插件|定时|调度|上报|MCP|调用|路径/,
+  数据来源: /数据来源|数据源|读取|长期记忆|记忆|token|原文|文件来源|输入来源|扫描|采集|用户原文/,
+  前端排版: /排版|布局|位置|骨架|预留位|结构|分组|树结构|层级|聚合|导出|整理|安排|归段|拆分/,
+};
+
+const DONE_KEYWORDS = /已做|已完成|已经实现|已写好|已实现|已有|做好了|做好了|已落|已经做了|已解决/;
+const IDEA_KEYWORDS = /想法|也许|或许|考虑|建议|可以(考虑|作为)|规划中|待定|暂定|设想|倾向/;
+
+// 去掉行首的列表记号（1. / 【】/ - / •），免得它们混进标题和内容。
+function stripMarker(line) {
+  return line
+    .replace(/^\s*(?:[-•·*]\s*)*/, '')
+    .replace(/^\s*\d+[.、)]\s*/, '')
+    .replace(/^\s*[【\[].*?[\]】]\s*/, '')
+    .trim();
+}
+
+function classifySegment(text) {
+  let best = '';
+  let bestScore = 0;
+  for (const seg of SEGMENTS) {
+    const hits = (text.match(SEGMENT_KEYWORDS[seg]) || []).length;
+    if (hits > bestScore) {
+      bestScore = hits;
+      best = seg;
+    }
+  }
+  // 一个关键词都没命中：偏 UI 的兜底猜测（提词器本质是界面工具）。
+  return best || '前端';
+}
+
+function classifyCategory(text) {
+  if (DONE_KEYWORDS.test(text)) return 'done';
+  if (IDEA_KEYWORDS.test(text)) return 'idea';
+  return 'todo';
+}
+
+// 星图坐标：category 决定环（半径），segment 决定扇区，index 在同扇区内散开。
+// 返回归一化坐标 x/y ∈ [-1, 1]，画星图画布时直接用。
+function computeStar(category, segment, index) {
+  const catIndex = Math.max(0, CATEGORIES.indexOf(category));
+  const segIndex = Math.max(0, SEGMENTS.indexOf(segment));
+  const ring = 0.22 + 0.15 * catIndex;          // 0.22 ~ 0.82，五环
+  const baseAngle = (segIndex / SEGMENTS.length) * Math.PI * 2 - Math.PI / 2;
+  const angle = baseAngle + index * 0.14;
+  return {
+    x: Number((ring * Math.cos(angle)).toFixed(4)),
+    y: Number((ring * Math.sin(angle)).toFixed(4)),
+  };
+}
+
+// 标题默认取前 16 字（她原话：可以自己设标题，也可以是前16个字）。
+function makeTitle(text, limit = 16) {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= limit) return clean;
+  return clean.slice(0, limit) + '…';
+}
+
+function parseAndClassify(raw, { dedupe = new Set() } = {}) {
+  const lines = String(raw || '').split(/\r\n|\n|\r/);
+  const items = [];
+  const counters = {};   // `${category}|${segment}` -> 计数，用于星图在同扇区内散开
+  for (const rawLine of lines) {
+    const line = stripMarker(rawLine);
+    if (!line) continue;
+    if (dedupe.has(line)) continue;
+    dedupe.add(line);
+    const segment = classifySegment(line);
+    const category = classifyCategory(line);
+    const key = `${category}|${segment}`;
+    const idx = counters[key] || 0;
+    counters[key] = idx + 1;
+    items.push({
+      title: makeTitle(line),
+      text: line,
+      category,
+      segment,
+      star: computeStar(category, segment, idx),
+      starIndex: idx,
+      source: 'import',
+    });
+  }
+  return items;
+}
+
+module.exports = {
+  parseAndClassify,
+  SEGMENTS,
+  CATEGORIES,
+  classifySegment,
+  classifyCategory,
+  computeStar,
+};

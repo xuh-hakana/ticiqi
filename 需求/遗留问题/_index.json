@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "issue_001",
+      "title": "两个提词器一起开时，需求库共用一份会互相抢着写，要不要让 ticiqi 用自己的一份？",
+      "source": "本轮分离产生（命令方块/docs/联动功能归属.md §3）",
+      "status": "ai_todo",
+      "layer": "ai_todo",
+      "confirmed": false,
+      "createdAt": "2026-11-06T00:39:12+08:00",
+      "questionFile": "issue_001.md",
+      "answerFile": "",
+      "reworkOf": "",
+      "supersededBy": "",
+      "answerFiles": []
+    },
+    {
+      "id": "issue_002",
+      "title": "提词器.app 内部报错文字仍写「命令方块」，改它要重新签名；保持原样还是改？",
+      "source": "本轮分离产生（ticiqi/说明.md §已知限制）",
+      "status": "ai_todo",
+      "layer": "ai_todo",
+      "confirmed": false,
+      "createdAt": "2026-11-06T00:39:12+08:00",
+      "questionFile": "issue_002.md",
+      "answerFile": "",
+      "reworkOf": "",
+      "supersededBy": "",
+      "answerFiles": []
+    }
+  ]
+}

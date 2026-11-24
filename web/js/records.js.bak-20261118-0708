@@ -1,0 +1,289 @@
+'use strict';
+/**
+ * 【已完成区】· 界面层
+ *
+ * 这是干什么的：点分组栏的「已完成区」按钮，列出 AI 每轮同步进来的记录。
+ * 有她原话 → 三字段（我记的 / 她原话 / 对应文件哪几行）；没有她原话 → 「AI已完成」两段式
+ * （我记的 / 对应文件哪几行），她 2026-11-09 定。可按规矩 / 名词 / AI已完成过滤，能在访达里打开数据文件。
+ * 她「只认客户端」：数据必须在这里能看，不能只躺在文件里。
+ *
+ * 沿用 issues.js 的独立脚本写法与现成 issue-* 样式，不碰 app.js、不新建 CSS。
+ * CSP 是 script-src 'self'，所以必须是同源外部脚本，内联脚本不执行。
+ */
+(function () {
+  var KIND = { rule: '规矩', noun: '名词', ai: 'AI已完成' };
+  var filter = 'all';
+
+  // 大分区（主人 2026-11-18 逐字原文 117 行）：workbuddy / xuhbot / 提词器 / 命令方块 /
+  // seach（她原拼写照留）/ 两个消耗。项目归属从每条记录的 files 路径自动推断，一条可属多个项目
+  // （重叠项目，如「提词器↔命令方块」「workbuddy规则↔其他任务指向」）→ 合并看时任一命中即显示。
+  var PROJECTS = [
+    { key: 'workbuddy', label: 'workbuddy', test: /workbuddy/i },
+    // xuhbot：带前缀的路径 + 早期记录里的裸文件名/内部相对路径（机器人主程就是这些文件）
+    { key: 'xuhbot', label: 'xuhbot', test: /(^|[\s\/])xuhbot(\/|\s|$)|(^|[\s\/])(qq|core|app|panel|memory|bot-out|soul)\.(js|log|css)|(^|[\s\/])src\/(data|connectors|scripts|memory|config|server|soul|docs)\//i },
+    { key: 'ticiqi', label: '提词器', test: /(^|\/)(ticiqi|ticiqi-app)(\/|$)|提词器/i },
+    { key: 'cmd', label: '命令方块', test: /命令方块|commandblock/i },
+    { key: 'search', label: 'seach', test: /(^|\/)(search|seach)(\/|$)/i },
+    { key: 'cost', label: '两个消耗', test: /消耗|消耗记录|消耗统计/i }
+  ];
+  // 当前选中的项目 key 集合：空 = 看全部；多个 = 合并看。
+  var projectSel = Object.create(null);
+  var allItems = [];
+
+  function itemProjects(it) {
+    var s = (it.files || []).join(' ') + ' ' + (it.evidence || []).join(' ');
+    var hits = PROJECTS.filter(function (p) { return p.test.test(s); }).map(function (p) { return p.key; });
+    return hits.length ? hits : ['__other__']; // 无可判定归属的归入「其它」
+  }
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  var toastTimer = null;
+  function toast(msg) {
+    var el = $('recordsToast');
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.hidden = true; }, 3200);
+    el.onclick = function () { el.hidden = true; };
+  }
+
+  function render(data) {
+    allItems = data.items || [];
+    var stats = $('recordsStats');
+    if (stats) stats.textContent = '共 ' + data.total + ' 条 · 规矩 ' +
+      (data.counts.rule || 0) + ' · 名词 ' + (data.counts.noun || 0) +
+      ' · AI已完成 ' + (data.counts.ai || 0);
+    var pathEl = $('recordsPath');
+    if (pathEl) pathEl.textContent = '数据落点：' + (data.jsonl || '') +
+      '（索引与详情由代码生成，勿手改）';
+    renderProjectNav();
+    renderList();
+  }
+
+  // 单一数据源：一张卡片怎么渲染，只在这里写一次
+  function cardHtml(it) {
+    return '<article class="issue-card">' +
+      '<header class="issue-card-head">' +
+        '<span class="issue-id">' + esc(it.id) + '</span>' +
+        '<span class="issue-status">' + esc(KIND[it.kind] || it.kind) + ' · ' + esc(it.time) + '</span>' +
+      '</header>' +
+      '<h3>' + esc(it.summary) + '</h3>' +
+      '<p class="issue-source"><strong>我记的：</strong>' + esc(it.mine) + '</p>' +
+      (it.shape === 'two' || !it.quote ? '' :
+        '<p class="issue-source"><strong>她原话：</strong>' + esc(it.quote) + '</p>') +
+      '<p class="issue-files"><strong>对应文件（哪几行）：</strong>' +
+        esc((it.evidence || []).join('、') || '（无）') + '</p>' +
+      '<p class="issue-note">详情：' + esc(it.detailFile) + ' · ' + esc(it.reason) + '</p>' +
+    '</article>';
+  }
+
+  // 按「项目 + 状态」双条件过滤后重绘列表（看全部=项目空集）
+  function renderList() {
+    var list = $('recordsList');
+    if (!list) return;
+    var selKeys = Object.keys(projectSel);
+    var items = allItems.filter(function (it) {
+      if (filter !== 'all' && it.kind !== filter) return false;
+      if (!selKeys.length) return true;                       // 看全部
+      var ips = itemProjects(it);
+      return selKeys.some(function (k) { return ips.indexOf(k) >= 0; }); // 单看/合并看
+    });
+    list.innerHTML = items.length
+      ? items.map(cardHtml).join('')
+      : '<p class="issue-empty">暂无记录（当前项目/状态筛选下）。</p>';
+  }
+
+  function renderProjectNav() {
+    var box = $('recordsProjects');
+    if (!box) return;
+    var selKeys = Object.keys(projectSel);
+    // 每个项目的条数（按 files 推断，多归属条目在各项目都计数）
+    function countFor(key) {
+      return allItems.filter(function (it) { return itemProjects(it).indexOf(key) >= 0; }).length;
+    }
+    var html = '<span class="tc-projnav-label" style="font-size:11px;color:var(--muted,#6E788B);">项目</span>';
+    html += '<button class="ghost-btn tc-proj-chip' + (!selKeys.length ? ' is-active' : '') +
+      '" type="button" data-proj="__all__">看全部 ' + allItems.length + '</button>';
+    PROJECTS.forEach(function (p) {
+      var n = countFor(p.key);
+      if (!n) return; // 没条目的项目不显示chip，保持干净
+      html += '<button class="ghost-btn tc-proj-chip' + (projectSel[p.key] ? ' is-active' : '') +
+        '" type="button" data-proj="' + p.key + '">' + esc(p.label) + ' ' + n + '</button>';
+    });
+    // 「其它」：无项目归属的条目，避免它们在选择单项目时消失
+    var otherN = countFor('__other__');
+    if (otherN) html += '<button class="ghost-btn tc-proj-chip' + (projectSel['__other__'] ? ' is-active' : '') +
+      '" type="button" data-proj="__other__">其它 ' + otherN + '</button>';
+    html += '<span style="font-size:11px;color:var(--muted,#6E788B);margin-left:4px;">可多选合并看 · 再点取消</span>';
+    box.innerHTML = html;
+  }
+
+  function fetchRecords() {
+    return fetch('/api/records').then(function (r) { return r.json(); });
+  }
+
+  function reload() {
+    return fetchRecords().then(render);
+  }
+
+  // 主页面第一屏的项目分区导航：与已完成区弹层共用 PROJECTS / itemProjects / projectSel。
+  // 每条项目 chip 显示条数；点击 = 打开已完成区并把该项目设为筛选（单看/再点别人合并/看全部清空）。
+  function mountMainProjectNav() {
+    var box = $('tcMainProjNav');
+    if (!box) return;
+    function countFor(key) {
+      return allItems.filter(function (it) { return itemProjects(it).indexOf(key) >= 0; }).length;
+    }
+    function paint() {
+      var hint = box.querySelector('.tc-mainprojnav-hint');
+      var old = box.querySelectorAll('.tc-proj-chip');
+      Array.prototype.forEach.call(old, function (n) { n.remove(); });
+      function chip(key, label, n) {
+        var b = document.createElement('button');
+        b.className = 'ghost-btn tc-proj-chip' + (key === '__all__' ? (!Object.keys(projectSel).length ? ' is-active' : '') : (projectSel[key] ? ' is-active' : ''));
+        b.type = 'button';
+        b.setAttribute('data-proj', key);
+        b.textContent = label + ' ' + n;
+        box.insertBefore(b, hint);
+      }
+      chip('__all__', '看全部', allItems.length);
+      PROJECTS.forEach(function (p) { var n = countFor(p.key); if (n) chip(p.key, p.label, n); });
+      var on = countFor('__other__');
+      if (on) chip('__other__', '其它', on);
+    }
+    box.addEventListener('click', function (e) {
+      var c = e.target.closest('[data-proj]');
+      if (!c) return;
+      var key = c.getAttribute('data-proj');
+      if (key === '__all__') projectSel = Object.create(null);
+      else if (projectSel[key]) delete projectSel[key];
+      else projectSel[key] = true;
+      var overlay = $('recordsOverlay');
+      if (overlay) overlay.hidden = false;   // 点项目直接展开已完成区看结果
+      renderProjectNav();
+      renderList();
+      paint();
+    });
+    // 数据加载完成后渲染一次 chip 计数
+    return fetchRecords().then(function (data) { allItems = data.items || []; paint(); }).catch(function () {});
+  }
+
+  function ready(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
+    else fn();
+  }
+
+  ready(function () {
+    var btn = $('tcDoneBtn');
+    var overlay = $('recordsOverlay');
+    // 主页面项目分区导航独立挂载（不依赖已完成区按钮是否存在）
+    mountMainProjectNav();
+    if (!btn || !overlay) return;
+
+    btn.addEventListener('click', function () {
+      overlay.hidden = false;
+      reload().catch(function () { toast('读不到已完成区索引'); });
+    });
+    var close = $('recordsCloseBtn');
+    if (close) close.addEventListener('click', function () { overlay.hidden = true; });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.hidden = true;
+    });
+
+    var projNav = $('recordsProjects');
+    if (projNav) projNav.addEventListener('click', function (e) {
+      var chip = e.target.closest('[data-proj]');
+      if (!chip) return;
+      var key = chip.getAttribute('data-proj');
+      if (key === '__all__') projectSel = Object.create(null);
+      else if (projectSel[key]) delete projectSel[key];
+      else projectSel[key] = true;
+      renderProjectNav();
+      renderList(); // 用已缓存数据重绘，不重新 fetch
+    });
+
+    var filters = $('recordsFilters');
+    if (filters) filters.addEventListener('click', function (e) {
+      var target = e.target.closest('[data-kind]');
+      if (!target) return;
+      filter = target.getAttribute('data-kind');
+      Array.prototype.forEach.call(filters.querySelectorAll('[data-kind]'), function (b) {
+        b.classList.toggle('is-active', b === target);
+      });
+      reload().catch(function () { toast('过滤失败'); });
+    });
+
+    var sync = $('recordsSyncBtn');
+    if (sync) sync.addEventListener('click', function () {
+      fetch('/api/records/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      }).then(function (r) { return r.json(); }).then(function (r) {
+        toast('同步完成：新增 ' + (r.added || 0) + ' 条 · 重复 ' + (r.duplicated || 0) + ' 条');
+        reload();
+      }).catch(function (e) { toast('同步失败：' + e.message); });
+    });
+
+    var reveal = $('recordsRevealBtn');
+    if (reveal) {
+      if (!(window.cbNative && window.cbNative.reveal)) { reveal.hidden = true; }
+      else reveal.addEventListener('click', function () {
+        window.cbNative.reveal('.ticiqi/C_DONE_INDEX.md')
+          .then(function () { toast('已在访达里显示索引文件'); })
+          .catch(function () { toast('打不开，路径见上方「数据落点」'); });
+      });
+    }
+
+    var clBtn = $('recordsCleanupBtn');
+    var clInput = $('recordsCleanupInput');
+    if (clBtn && clInput) clBtn.addEventListener('click', function () {
+      var v = clInput.value.trim();
+      if (!v) { toast('先填要清理的 id，如 L0022'); return; }
+      fetch('/api/records/cleanup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: v.split(/[\s,，]+/).filter(Boolean), reason: '客户端清理' })
+      }).then(function (r) { return r.json(); }).then(function (r) {
+        if (!r.ok) { toast('清理失败：' + (r.error || '')); return; }
+        toast('已清理：' + (r.ids || []).join('、'));
+        reload();
+      }).catch(function (e) { toast('清理失败：' + e.message); });
+    });
+
+    // 接入规则：面板上查看 + 复制（主人 2026-11-18 要求）。读现成接口，不造新接口。
+    var arBtn = $('tcAccessRuleBtn');
+    var arOverlay = $('accessRuleOverlay');
+    var arText = $('accessRuleText');
+    var arToast = $('accessRuleToast');
+    function arToastMsg(msg) {
+      if (!arToast) return;
+      arToast.textContent = msg; arToast.hidden = false;
+      setTimeout(function () { arToast.hidden = true; }, 2600);
+    }
+    if (arBtn && arOverlay) {
+      arBtn.addEventListener('click', function () {
+        arOverlay.hidden = false;
+        fetch('/api/ctodo/access-rule').then(function (r) { return r.json(); })
+          .then(function (j) { arText.textContent = j.text || '（接入规则为空）'; })
+          .catch(function () { arText.textContent = '读不到接入规则，检查服务。'; });
+      });
+      var arClose = $('accessRuleCloseBtn');
+      if (arClose) arClose.addEventListener('click', function () { arOverlay.hidden = true; });
+      arOverlay.addEventListener('click', function (e) { if (e.target === arOverlay) arOverlay.hidden = true; });
+      var arCopy = $('accessRuleCopyBtn');
+      if (arCopy) arCopy.addEventListener('click', function () {
+        var text = arText.textContent || '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text)
+            .then(function () { arToastMsg('接入规则已复制'); })
+            .catch(function () { arToastMsg('复制失败，请手动选中'); });
+        } else { arToastMsg('浏览器不支持自动复制，请手动选中'); }
+      });
+    }
+  });
+})();
